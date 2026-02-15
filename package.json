@@ -1,21 +1,22 @@
 {
   "name": "cognistore",
   "version": "1.0.0",
-  "description": "helpful AI agent for information storage",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "description": "a helpful AI agent for information storage",
+  "homepage": "https://github.com/gigacrab/cognistore#readme",
+  "bugs": {
+    "url": "https://github.com/gigacrab/cognistore/issues"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/gigacrab/cognistore.git"
   },
-  "author": "electro wizard",
   "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/gigacrab/cognistore/issues"
+  "author": "electro wizard",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "homepage": "https://github.com/gigacrab/cognistore#readme",
   "dependencies": {
     "firebase": "^12.9.0"
   }
