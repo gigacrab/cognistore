@@ -47,6 +47,13 @@ class MemoryNode {
   }
 }
 
+/*
+The backend can use the id returned by the createNode function. 
+If the user wants to link this PDF to an old decision, 
+the backend can use that ID to create a MemoryEdge entry.
+*/
+
+// The Line for Relationship
 class MemoryEdge {
   final String fromId; // ID of the source node
   final String toId;   // ID of the target node

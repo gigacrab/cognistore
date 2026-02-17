@@ -15,6 +15,8 @@ class _UploadScreenState extends State<UploadScreen>{
   PlatformFile? _pickedFile;
   bool _isUploading = false;
   String _statusMessage = "";
+
+  final TextEditingController _textNoteController = TextEditingController();
   
   Future<void> selectFile() async{
     final result = await FilePicker.platform.pickFiles(
@@ -38,14 +40,21 @@ class _UploadScreenState extends State<UploadScreen>{
       final ref = FirebaseStorage.instance.ref().child('pdfs/${_pickedFile!.name}');
       await ref.putData(_pickedFile!.bytes!);
       final url = await ref.getDownloadURL();
+      String userDescription = _textNoteController.text;
+      /*
+      AI Use
+      The AI should replace the placeholder strings with the results of an API call.
+      The AI will use _pickedFile!.bytes.
+      The API will return a summary and the full text.
+      The AI will put those results into the summary and fullContent fields of the MemoryNode before saving it.
+      */
 
-      
       // Create the memory node object
       MemoryNode newNode = MemoryNode(
         id:'', //Firestore will generate this
         title: _pickedFile!.name,
         type: 'decision', //Default type
-        summary: 'Summarizing PDF...',
+        summary: userDescription.isNotEmpty?userDescription:"No description provided.",
         fullContent: 'Extracted text will ge here.', //Ai Part extract content from PDF
         tags:['New Upload'],
         metadata: {'fileSize': _pickedFile!.size},
@@ -89,8 +98,14 @@ class _UploadScreenState extends State<UploadScreen>{
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
             //Uploader UI
+            const Text(
+                "Upload PDF",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
+                ),
+            const SizedBox(height:10),
             GestureDetector(
               onTap: selectFile,
+              
               child:Container(
                 height: 200,
                 width: double.infinity,
@@ -113,6 +128,38 @@ class _UploadScreenState extends State<UploadScreen>{
                 ),
               ),
             ),
+            const SizedBox(height: 30),
+            //text input block
+            const Text(
+              "Description",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _textNoteController,
+                maxLines: 5,
+                decoration: InputDecoration(
+                  hintText:"Type your decision, trade-offs, or notes here...",
+                  filled: true,
+                  fillColor: Colors.blue.withOpacity(0.1),
+                  enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(15),
+                  borderSide: const BorderSide(color: Colors.blue),
+                ),
+                
+                // 3. The border when the user clicks on it
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(15),
+                  borderSide: const BorderSide(color: Colors.blue, width: 2),
+                ),
+                
+                // 4. Default border fallback
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
+              ),
+
+              ),
             const SizedBox(height: 30),
             
             if (_pickedFile != null)
