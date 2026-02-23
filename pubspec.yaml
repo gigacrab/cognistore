@@ -38,10 +38,16 @@ dependencies:
   cloud_firestore: ^6.1.2
   firebase_storage: ^13.0.0
 
+<<<<<<< HEAD
   file_picker: ^10.3.10
   google_generative_ai: ^0.4.7
   syncfusion_flutter_pdf: ^32.2.5
   intl: ^0.20.2
+=======
+  file_picker: ^8.0.0
+  cloud_functions: ^6.0.6
+  firebase_auth: ^6.1.4
+>>>>>>> 87e35c3bc64d3b2f3759428da8c339a25bb9b84e
 dev_dependencies:
   flutter_test:
     sdk: flutter

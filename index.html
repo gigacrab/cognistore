@@ -1,7 +1,75 @@
-<html>
-    <head>
-        <script type="module" src="/src/main.ts"></script>
-    </head>
-    <h1>greetings</h1>
-    <button id="theButton">Click Me</button>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CogniStore</title>
+  </head>
+  <body>
+    <!-- AUTH -->
+    <section id="authCard">
+      <h1 class="center-text">Sign in</h1>
+
+      <form id="authForm">
+        <h2 class="center-text">Email</h2>
+        <input id="email" type="email" autocomplete="email" required />
+
+        <h2 class="center-text">Password</h2>
+        <input id="password" type="password" autocomplete="current-password" required />
+
+        <div style="display:flex; gap:10px; margin-top:10px;">
+          <button id="signInBtn" type="submit">Sign in</button>
+          <button id="signUpBtn" type="button">Sign up</button>
+        </div>
+      </form>
+
+      <div id="authMsg"></div>
+    </section>
+
+    <!-- APP -->
+    <section id="appCard" class="hidden">
+      <header style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+        <div>
+          Logged in as: <span id="userEmail"></span>
+        </div>
+        <button id="signOutBtn" type="button">Sign out</button>
+      </header>
+
+      <div id="appMsg"></div>
+
+      <hr />
+
+      <!-- Upload -->
+      <section>
+        <h2>Upload PDF</h2>
+        <input id="pdfFile" type="file" accept="application/pdf" multiple />
+        <button id="uploadPdfBtn" type="button">Upload</button>
+        <button id="indexAllBtn" type="button">Index all</button>
+      </section>
+
+      <!-- Docs -->
+      <section>
+        <h2>Documents</h2>
+        <div id="docsLoader" class="hidden">Loading…</div>
+        <ul id="docsList"></ul>
+      </section>
+
+      <hr />
+
+      <!-- Chat -->
+      <section>
+        <h2>Chat</h2>
+        <div id="chatLog" style="min-height:160px; border:1px solid #444; padding:10px; margin-bottom:10px;"></div>
+
+        <form id="chatForm" style="display:flex; gap:10px;">
+          <input id="chatText" placeholder="Ask about the selected document…" />
+          <button type="submit">Send</button>
+        </form>
+      </section>
+
+      <hr />
+
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
 </html>

@@ -1,0 +1,59 @@
+{
+  "version": "2",
+  "projectNumber": "361114914221",
+  "projectId": "cognistore-725e9",
+  "appId": "1:361114914221:web:fa20d3f61ac4a7d9e36524",
+  "realtimeDatabaseInstanceUri": "",
+  "realtimeDatabaseUrl": "",
+  "storageBucket": "cognistore-725e9.firebasestorage.app",
+  "locationId": "",
+  "apiKey": "AIzaSyCaKwoSFfXhcAVDg7MRDtYaOFDQ1tG9f4g",
+  "authDomain": "cognistore-725e9.firebaseapp.com",
+  "messagingSenderId": "361114914221",
+  "measurementId": "",
+  "firestore": {
+    "database": "(default)",
+    "location": "asia-southeast1",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "functions": [
+    {
+      "codebase": "default",
+      "disallowLegacyRuntimeConfig": true,
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run lint",
+        "npm --prefix \"$RESOURCE_DIR\" run build"
+      ],
+      "source": "functions",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ],
+  "hosting": {
+    "public": "dist",
+    "site": "thecognistore",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "auth": {
+    "providers": {}
+  }
+}

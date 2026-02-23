@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cognistore/screens/upload_screen.dart';
+import 'package:cognistore/screens/login_screen.dart';
 import 'package:cognistore/database_service.dart';
 import 'package:cognistore/models/memory_node.dart';
 import 'firebase_options.dart';
 import 'package:intl/intl.dart'; // Add this to your pubspec.yaml for date formatting
 
+<<<<<<< HEAD
 void main() async {
+=======
+import 'package:firebase_auth/firebase_auth.dart';
+
+void main() async{
+>>>>>>> 87e35c3bc64d3b2f3759428da8c339a25bb9b84e
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
@@ -31,10 +38,29 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
         fontFamily: 'Roboto',
       ),
+<<<<<<< HEAD
       initialRoute: '/',
       routes: {
         '/': (context) => const MyHomePage(title: "Dashboard"),
         '/upload': (context) => const UploadScreen()
+=======
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snapshot.hasData) {
+            return const MyHomePage(title: "Cognistore");
+          }
+          return const LoginScreen();
+        },
+      ),
+      routes: {
+        '/upload': (context) => const UploadScreen(),
+>>>>>>> 87e35c3bc64d3b2f3759428da8c339a25bb9b84e
       },
     );
   }
@@ -114,6 +140,7 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+<<<<<<< HEAD
         backgroundColor: Colors.white,
         title: Text(widget.title, style: const TextStyle(fontWeight: FontWeight.bold)),
         elevation: 1,
@@ -125,6 +152,17 @@ class _MyHomePageState extends State<MyHomePage> {
               backgroundColor: Colors.grey.shade200,
               child: const Icon(Icons.person, color: Colors.grey),
             ),
+=======
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: Text(widget.title),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () {
+              FirebaseAuth.instance.signOut();
+            },
+>>>>>>> 87e35c3bc64d3b2f3759428da8c339a25bb9b84e
           )
         ],
       ),
