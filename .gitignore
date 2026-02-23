@@ -4,7 +4,7 @@
 .firebaserc
 
 # Firebase Hosting
-/firebase.json
+# /firebase.json
 *.cache
 hosting/.cache
 
@@ -30,3 +30,9 @@ yarn-error.log*
 # node modules
 node_modules/
 dist/
+
+# flutter
+/.dart_tool/
+/.flutter-plugins-dependencies
+/build/
+/pubspec.lock
