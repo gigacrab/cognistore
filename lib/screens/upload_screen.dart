@@ -4,6 +4,10 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cognistore/database_service.dart';
 import 'package:cognistore/models/memory_node.dart';
 
+// --- NEW IMPORTS ---
+import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:syncfusion_flutter_pdf/pdf.dart';
+
 class UploadScreen extends StatefulWidget{
   const UploadScreen({super.key});
   
@@ -30,58 +34,90 @@ class _UploadScreenState extends State<UploadScreen>{
     }
   }
 
+  // --- UPDATED UPLOAD METHOD ---
   Future<void> uploadFile() async {
     if (_pickedFile == null) return;
 
     setState(()=> _isUploading = true);
 
     try{
-      //upload pdf to Storage
+      // 1. Upload PDF to Storage
       final ref = FirebaseStorage.instance.ref().child('pdfs/${_pickedFile!.name}');
       await ref.putData(_pickedFile!.bytes!);
       final url = await ref.getDownloadURL();
       String userDescription = _textNoteController.text;
-      /*
-      AI Use
-      The AI should replace the placeholder strings with the results of an API call.
-      The AI will use _pickedFile!.bytes.
-      The API will return a summary and the full text.
-      The AI will put those results into the summary and fullContent fields of the MemoryNode before saving it.
-      */
 
-      // Create the memory node object
+      // 2. Extract Text from PDF Bytes
+      String extractedText = '';
+      try {
+        final PdfDocument document = PdfDocument(inputBytes: _pickedFile!.bytes!);
+        extractedText = PdfTextExtractor(document).extractText();
+        document.dispose();
+      } catch (e) {
+        debugPrint("Could not extract text: $e");
+        extractedText = "Text extraction failed or document is an image-based PDF.";
+      }
+
+      // 3. Call the Gemini AI API for Summary
+      String aiSummary = userDescription; // Fallback to user description
+      
+      if (extractedText.trim().isNotEmpty) {
+        // Initialize the Gemini Model (Use gemini-1.5-flash for speed and large text windows)
+        final model = GenerativeModel(
+          model: 'gemini-1.5-flash', 
+          apiKey: 'YOUR_GEMINI_API_KEY', // <-- PUT YOUR REAL KEY HERE
+        );
+
+        final prompt = '''
+        You are a highly intelligent corporate assistant. Please read the following document text and provide a concise, 2-sentence summary of the main decisions, trade-offs, or insights.
+        
+        Document Text:
+        $extractedText
+        ''';
+
+        final response = await model.generateContent([Content.text(prompt)]);
+        if (response.text != null && response.text!.isNotEmpty) {
+           aiSummary = response.text!.trim();
+        }
+      }
+
+      // 4. Create the memory node object with real AI data
       MemoryNode newNode = MemoryNode(
-        id:'', //Firestore will generate this
+        id:'', 
         title: _pickedFile!.name,
-        type: 'decision', //Default type
-        summary: userDescription.isNotEmpty?userDescription:"No description provided.",
-        fullContent: 'Extracted text will ge here.', //Ai Part extract content from PDF
+        type: 'decision', 
+        summary: aiSummary, // <--- AI Summary injected here
+        fullContent: extractedText, // <--- Full extracted text injected here
         tags:['New Upload'],
         metadata: {'fileSize': _pickedFile!.size},
         fileUrl: url,
       );
 
-      //Save to Firestore Database
+      // 5. Save to Firestore Database
       await DatabaseService().createNode(newNode);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Upload Complete")),
-      );
-
-      //Return to home automatically
-      Navigator.pop(context);
+      if(mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Upload & AI Summary Complete!")),
+        );
+        Navigator.pop(context);
+      }
 
     } catch(e){
       setState(() {
         _statusMessage = "Upload fail: ${e.toString()}";
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
-    }finally{
-      setState((){
-        _isUploading = false;
-      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState((){
+          _isUploading = false;
+        });
+      }
     }
   }
 
