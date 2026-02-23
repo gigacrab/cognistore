@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cognistore/screens/upload_screen.dart';
+import 'package:cognistore/screens/login_screen.dart';
 import 'package:cognistore/database_service.dart';
 import 'package:cognistore/models/memory_node.dart';
 import 'firebase_options.dart';
+
+import 'package:firebase_auth/firebase_auth.dart';
 
 void main() async{
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,10 +31,22 @@ class MyApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      initialRoute: '/',  //main entrance
-      routes:{
-        '/':(context) => const MyHomePage(title: "Cognistore"),
-        '/upload': (context) => const UploadScreen()
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snapshot.hasData) {
+            return const MyHomePage(title: "Cognistore");
+          }
+          return const LoginScreen();
+        },
+      ),
+      routes: {
+        '/upload': (context) => const UploadScreen(),
       },
     );
   }
@@ -93,6 +108,14 @@ class _MyHomePageState extends State<MyHomePage> {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(widget.title),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () {
+              FirebaseAuth.instance.signOut();
+            },
+          )
+        ],
       ),
       body: StreamBuilder<List<MemoryNode>>(
         stream: DatabaseService().streamNodes(),

@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cognistore/database_service.dart';
 import 'package:cognistore/models/memory_node.dart';
+import 'package:firebase_auth/firebase_auth.dart';	
 
 class UploadScreen extends StatefulWidget{
   const UploadScreen({super.key});
@@ -36,8 +37,16 @@ class _UploadScreenState extends State<UploadScreen>{
     setState(()=> _isUploading = true);
 
     try{
-      //upload pdf to Storage
-      final ref = FirebaseStorage.instance.ref().child('pdfs/${_pickedFile!.name}');
+      // get mandatory uid
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+
+      // upload under uid folder, with timestamp in case there are duplicate files
+      final ref = FirebaseStorage.instance
+				.ref()
+				.child("pdfs")
+				.child(uid)
+				.child('${DateTime.now().millisecondsSinceEpoch}_${_pickedFile!.name}');
+
       await ref.putData(_pickedFile!.bytes!);
       final url = await ref.getDownloadURL();
       String userDescription = _textNoteController.text;

@@ -1,12 +1,17 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cognistore/models/memory_node.dart'; 
+import 'package:firebase_auth/firebase_auth.dart';
 
 class DatabaseService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  String get _uid => FirebaseAuth.instance.currentUser!.uid;
+
   // Path helper
-  CollectionReference _nodeRef() => _db.collection('projects/proj_1/nodes');
-  CollectionReference _edgeRef() => _db.collection('projects/proj_1/edges');
+  CollectionReference _nodeRef() =>
+    _db.collection('users').doc(_uid).collection('nodes');
+  CollectionReference _edgeRef() =>
+      _db.collection('users').doc(_uid).collection('edges');
 
   //To save AI output
   Future<String> createNode(MemoryNode node) async{
