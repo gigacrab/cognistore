@@ -18,6 +18,10 @@ class DatabaseService {
     DocumentReference doc = await _nodeRef().add(node.toMap());
     return doc.id;
   }
+  // --- ADD THIS TO DELETE NODES ---
+  Future<void> deleteNode(String nodeId) async {
+    await _nodeRef().doc(nodeId).delete();
+  }
 
   //For UI to build the smart recall list
   Stream<List<MemoryNode>> streamNodes(){

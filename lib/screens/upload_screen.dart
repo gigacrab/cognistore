@@ -5,7 +5,6 @@ import 'package:cognistore/database_service.dart';
 import 'package:cognistore/models/memory_node.dart';
 import 'package:firebase_auth/firebase_auth.dart';	
 
-// --- NEW IMPORTS ---
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
@@ -35,33 +34,27 @@ class _UploadScreenState extends State<UploadScreen>{
     }
   }
 
-  // --- UPDATED UPLOAD METHOD ---
   Future<void> uploadFile() async {
     if (_pickedFile == null) return;
 
     setState(()=> _isUploading = true);
 
     try{
-<<<<<<< HEAD
-      // 1. Upload PDF to Storage
-      final ref = FirebaseStorage.instance.ref().child('pdfs/${_pickedFile!.name}');
-=======
-      // get mandatory uid
+      // Get mandatory uid
       final uid = FirebaseAuth.instance.currentUser!.uid;
 
-      // upload under uid folder, with timestamp in case there are duplicate files
+      // Upload under uid folder, with timestamp in case there are duplicate files
       final ref = FirebaseStorage.instance
 				.ref()
 				.child("pdfs")
 				.child(uid)
 				.child('${DateTime.now().millisecondsSinceEpoch}_${_pickedFile!.name}');
 
->>>>>>> 87e35c3bc64d3b2f3759428da8c339a25bb9b84e
       await ref.putData(_pickedFile!.bytes!);
       final url = await ref.getDownloadURL();
       String userDescription = _textNoteController.text;
 
-      // 2. Extract Text from PDF Bytes
+      // Extract Text from PDF Bytes
       String extractedText = '';
       try {
         final PdfDocument document = PdfDocument(inputBytes: _pickedFile!.bytes!);
@@ -72,14 +65,13 @@ class _UploadScreenState extends State<UploadScreen>{
         extractedText = "Text extraction failed or document is an image-based PDF.";
       }
 
-      // 3. Call the Gemini AI API for Summary
-      String aiSummary = userDescription; // Fallback to user description
+      // Call the Gemini AI API for Summary
+      String aiSummary = userDescription; 
       
       if (extractedText.trim().isNotEmpty) {
-        // Initialize the Gemini Model (Use gemini-1.5-flash for speed and large text windows)
         final model = GenerativeModel(
-          model: 'gemini-1.5-flash', 
-          apiKey: 'YOUR_GEMINI_API_KEY', // <-- PUT YOUR REAL KEY HERE
+          model: 'gemini-2.5-flash', 
+          apiKey: 'AIzaSyAuWHoXG2LGDoLN3Q8lUfvzVQ8xFUv0wx4', // <-- Ensure your key is here when testing
         );
 
         final prompt = '''
@@ -95,19 +87,19 @@ class _UploadScreenState extends State<UploadScreen>{
         }
       }
 
-      // 4. Create the memory node object with real AI data
+      // Create the memory node object with real AI data
       MemoryNode newNode = MemoryNode(
         id:'', 
         title: _pickedFile!.name,
         type: 'decision', 
-        summary: aiSummary, // <--- AI Summary injected here
-        fullContent: extractedText, // <--- Full extracted text injected here
+        summary: aiSummary, 
+        fullContent: extractedText, 
         tags:['New Upload'],
         metadata: {'fileSize': _pickedFile!.size},
         fileUrl: url,
       );
 
-      // 5. Save to Firestore Database
+      // Save to Firestore Database
       await DatabaseService().createNode(newNode);
 
       if(mounted) {
@@ -147,7 +139,6 @@ class _UploadScreenState extends State<UploadScreen>{
           child:Column(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
-            //Uploader UI
             const Text(
                 "Upload PDF",
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
@@ -155,7 +146,6 @@ class _UploadScreenState extends State<UploadScreen>{
             const SizedBox(height:10),
             GestureDetector(
               onTap: selectFile,
-              
               child:Container(
                 height: 200,
                 width: double.infinity,
@@ -179,7 +169,6 @@ class _UploadScreenState extends State<UploadScreen>{
               ),
             ),
             const SizedBox(height: 30),
-            //text input block
             const Text(
               "Description",
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
@@ -196,14 +185,10 @@ class _UploadScreenState extends State<UploadScreen>{
                   borderRadius: BorderRadius.circular(15),
                   borderSide: const BorderSide(color: Colors.blue),
                 ),
-                
-                // 3. The border when the user clicks on it
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(15),
                   borderSide: const BorderSide(color: Colors.blue, width: 2),
                 ),
-                
-                // 4. Default border fallback
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(15),
                 ),
@@ -222,7 +207,6 @@ class _UploadScreenState extends State<UploadScreen>{
                   style: ElevatedButton.styleFrom(minimumSize: const Size(200, 50)),
                   ),
 
-            //return button
             const SizedBox(height:20),
 
             OutlinedButton.icon(

@@ -1,19 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cognistore/screens/upload_screen.dart';
 import 'package:cognistore/screens/login_screen.dart';
 import 'package:cognistore/database_service.dart';
 import 'package:cognistore/models/memory_node.dart';
 import 'firebase_options.dart';
-import 'package:intl/intl.dart'; // Add this to your pubspec.yaml for date formatting
+import 'package:intl/intl.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
-<<<<<<< HEAD
 void main() async {
-=======
-import 'package:firebase_auth/firebase_auth.dart';
-
-void main() async{
->>>>>>> 87e35c3bc64d3b2f3759428da8c339a25bb9b84e
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
@@ -32,18 +28,12 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF5A52FF),
-          brightness: Brightness.light, // Switched to light mode to match your design
+          brightness: Brightness.light, 
         ),
         scaffoldBackgroundColor: const Color(0xFFF8F9FA),
         useMaterial3: true,
         fontFamily: 'Roboto',
       ),
-<<<<<<< HEAD
-      initialRoute: '/',
-      routes: {
-        '/': (context) => const MyHomePage(title: "Dashboard"),
-        '/upload': (context) => const UploadScreen()
-=======
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
@@ -53,29 +43,65 @@ class MyApp extends StatelessWidget {
             );
           }
           if (snapshot.hasData) {
-            return const MyHomePage(title: "Cognistore");
+            return const MyHomePage();
           }
           return const LoginScreen();
         },
       ),
       routes: {
         '/upload': (context) => const UploadScreen(),
->>>>>>> 87e35c3bc64d3b2f3759428da8c339a25bb9b84e
       },
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-  final String title;
+  const MyHomePage({super.key});
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  // Your existing bottom sheet logic
+  // --- NEW: State variable to track the active screen ---
+  int _selectedIndex = 0;
+
+  // App Bar titles corresponding to the selected index
+  final List<String> _titles = ['Overview', 'Recall', 'Knowledge Bank'];
+
+  void _onDrawerItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+    Navigator.pop(context); // Close the drawer
+  }
+  
+  void _confirmDelete(BuildContext context, MemoryNode node) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Memory?'),
+        content: Text('Are you sure you want to delete "${node.title}"?\nThis cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context), 
+            child: const Text('Cancel')
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context); 
+              await DatabaseService().deleteNode(node.id); 
+              if(context.mounted){
+                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Memory deleted")));
+              }
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showNodeDetails(BuildContext context, MemoryNode node) {
     showModalBottomSheet(
       context: context,
@@ -106,25 +132,41 @@ class _MyHomePageState extends State<MyHomePage> {
                 child: ListView(
                   controller: controller,
                   children: [
-                    Text(node.title,
+                    SelectableText(node.title,
                         style: const TextStyle(
                             fontSize: 24, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 16),
-                    const Text("AI Summary & Details",
+                    
+                    const Text("AI Summary",
                         style: TextStyle(
                             color: Color(0xFF5A52FF),
+                            fontSize: 18,
                             fontWeight: FontWeight.bold)),
                     const Divider(),
                     const SizedBox(height: 8),
-                    Text(
+                    SelectableText(
+                      node.summary.isEmpty ? "No summary available." : node.summary,
+                      style: const TextStyle(height: 1.5, fontSize: 16, fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 24),
+
+                    const Text("Full Extracted Document",
+                        style: TextStyle(
+                            color: Colors.grey,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold)),
+                    const Divider(),
+                    const SizedBox(height: 8),
+                    SelectableText(
                       node.fullContent.isEmpty
                           ? "No detailed content extracted yet."
                           : node.fullContent,
-                      style: const TextStyle(height: 1.5, fontSize: 16),
+                      style: const TextStyle(height: 1.5, fontSize: 14, color: Colors.black87),
                     ),
                     const SizedBox(height: 20),
+                    
                     if (node.fileUrl != null)
-                      Text("Source: ${node.fileUrl}",
+                      SelectableText("Source: ${node.fileUrl}",
                           style: const TextStyle(fontSize: 12, color: Colors.grey)),
                   ],
                 ),
@@ -140,9 +182,8 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-<<<<<<< HEAD
         backgroundColor: Colors.white,
-        title: Text(widget.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(_titles[_selectedIndex], style: const TextStyle(fontWeight: FontWeight.bold)),
         elevation: 1,
         shadowColor: Colors.black12,
         actions: [
@@ -152,25 +193,14 @@ class _MyHomePageState extends State<MyHomePage> {
               backgroundColor: Colors.grey.shade200,
               child: const Icon(Icons.person, color: Colors.grey),
             ),
-=======
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(widget.title),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () {
-              FirebaseAuth.instance.signOut();
-            },
->>>>>>> 87e35c3bc64d3b2f3759428da8c339a25bb9b84e
           )
         ],
       ),
-      // --- THE MENU TINGY (DRAWER) ---
+      
+      // --- UPDATED DRAWER ---
       drawer: Drawer(
         backgroundColor: Colors.white,
-        child: ListView(
-          padding: EdgeInsets.zero,
+        child: Column(
           children: [
             const DrawerHeader(
               decoration: BoxDecoration(color: Color(0xFFF8F9FA)),
@@ -185,109 +215,277 @@ class _MyHomePageState extends State<MyHomePage> {
                 ],
               ),
             ),
-            _buildDrawerItem(Icons.grid_view, 'Dashboard', isActive: true),
-            _buildDrawerItem(Icons.search, 'Smart Recall'),
-            _buildDrawerItem(Icons.folder_open, 'Knowledge Bank'),
-            const Divider(),
-            _buildDrawerItem(Icons.settings, 'Settings'),
+            
+            // Top Navigation Items
+            _buildDrawerItem(Icons.grid_view, 'Dashboard', 0),
+            _buildDrawerItem(Icons.search, 'Smart Recall', 1),
+            _buildDrawerItem(Icons.folder_open, 'Knowledge Bank', 2),
+            
+            // Spacer pushes everything below it to the bottom of the drawer
+            const Spacer(),
+            
+            const Divider(height: 1),
+            const SizedBox(height: 8),
+
+            // Bottom Actions (Invite, Settings, Sign Out)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: ListTile(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                tileColor: const Color(0xFFEEF2FF), // Light purple background
+                leading: const Icon(Icons.group_add_outlined, color: Color(0xFF5A52FF)),
+                title: const Text('Invite Team', style: TextStyle(color: Color(0xFF5A52FF), fontWeight: FontWeight.bold)),
+                onTap: () {
+                  // TODO: Implement collaboration features
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Collaboration coming soon!")));
+                  Navigator.pop(context);
+                },
+              ),
+            ),
+            _buildActionItem(Icons.settings_outlined, 'Settings', onTap: () {}),
+            _buildActionItem(Icons.logout, 'Sign Out', color: Colors.redAccent, onTap: () {
+              FirebaseAuth.instance.signOut();
+              Navigator.pop(context); 
+            }),
+            const SizedBox(height: 16),
           ],
         ),
       ),
       
-      body: StreamBuilder<List<MemoryNode>>(
-        stream: DatabaseService().streamNodes(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          
-          final nodes = snapshot.data ?? [];
+      // --- DYNAMIC BODY RENDERING ---
+      body: _selectedIndex == 0 
+          ? _buildDashboard() 
+          : _selectedIndex == 1 
+              ? _buildSmartRecall() 
+              : const Center(child: Text("Knowledge Bank Coming Soon")),
 
-          return ListView(
-            padding: const EdgeInsets.all(24),
+      // Only show the Floating Action Button on the Dashboard
+      floatingActionButton: _selectedIndex == 0 
+        ? FloatingActionButton.extended(
+            onPressed: () => Navigator.pushNamed(context, '/upload'),
+            backgroundColor: const Color(0xFF5A52FF),
+            icon: const Icon(Icons.add, color: Colors.white),
+            label: const Text("Add to Bank", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          )
+        : null,
+    );
+  }
+
+  // --- SCREEN 1: THE DASHBOARD ---
+  Widget _buildDashboard() {
+    return StreamBuilder<List<MemoryNode>>(
+      stream: DatabaseService().streamNodes(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        
+        final nodes = snapshot.data ?? [];
+
+        return ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Welcome back, Jayden!',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1F2937),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Here is the latest from your company\'s memory bank.',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 32),
+
+            Row(
+              children: [
+                Expanded(
+                  flex: 1, 
+                  child: _buildStatCard(Icons.book, 'TOTAL MEMORIES', '${nodes.length}', Colors.indigo.shade100, Colors.indigo)
+                ),
+                const Spacer(flex: 1), 
+              ],
+            ),
+            const SizedBox(height: 40),
+
+            const Text(
+              'Recent Intelligence',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1F2937)),
+            ),
+            const SizedBox(height: 16),
+
+            if (nodes.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(32.0),
+                child: Center(child: Text("No memories yet. Tap '+' to add your first PDF.")),
+              )
+            else
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 400,
+                  mainAxisSpacing: 24,
+                  crossAxisSpacing: 24,
+                  childAspectRatio: 0.8, 
+                ),
+                itemCount: nodes.length,
+                itemBuilder: (context, index) {
+                  final node = nodes[index];
+                  return _buildMemoryCard(context, node);
+                },
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  // --- SCREEN 2: SMART RECALL ---
+  Widget _buildSmartRecall() {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 800), // Keeps it nice on wide screens
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Welcome Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              const Text(
+                'Smart Recall',
+                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF1F2937)),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Query your entire company memory bank using natural language.',
+                style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 32),
+              
+              // The Chat Box UI
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))
+                    ],
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
                     children: [
-                      const Text(
-                        'Welcome back, Jayden!',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1F2937),
+                      // Header
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        color: const Color(0xFF5A52FF),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.psychology, color: Colors.white, size: 20),
+                            SizedBox(width: 8),
+                            Text('Smart Recall', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Here is the latest from your company\'s memory bank.',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey.shade600,
+                      
+                      // Chat Body
+                      Expanded(
+                        child: ListView(
+                          padding: const EdgeInsets.all(24),
+                          children: [
+                            // AI Welcome Bubble
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  border: Border.all(color: Colors.grey.shade300),
+                                  borderRadius: const BorderRadius.only(
+                                    topLeft: Radius.circular(12),
+                                    topRight: Radius.circular(12),
+                                    bottomRight: Radius.circular(12),
+                                  ),
+                                ),
+                                child: const Text(
+                                  'Hello! I am your Intelligent Memory assistant. Ask me anything about your uploaded documents, like "What were the key decisions in the last meeting?" or "Why did the server crash last Tuesday?"',
+                                  style: TextStyle(height: 1.5, fontSize: 14),
+                                ),
+                              ),
+                            )
+                          ],
+                        ),
+                      ),
+                      
+                      // Input Field Area
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          border: Border(top: BorderSide(color: Colors.grey.shade200)),
+                        ),
+                        child: TextField(
+                          decoration: InputDecoration(
+                            hintText: 'Search company memory...',
+                            hintStyle: TextStyle(color: Colors.grey.shade400),
+                            filled: true,
+                            fillColor: const Color(0xFFF8F9FA),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(30),
+                              borderSide: BorderSide.none,
+                            ),
+                            suffixIcon: Padding(
+                              padding: const EdgeInsets.all(4.0),
+                              child: Container(
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFE0E0E0),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: IconButton(
+                                  icon: const Icon(Icons.send, color: Colors.white, size: 18),
+                                  onPressed: () {
+                                    // TODO: Implement search logic
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ],
                   ),
-                ],
-              ),
-              const SizedBox(height: 32),
-
-              // Quick Stats
-              Row(
-                children: [
-                  Expanded(child: _buildStatCard(Icons.book, 'TOTAL MEMORIES', '${nodes.length}', Colors.indigo.shade100, Colors.indigo)),
-                  const SizedBox(width: 16),
-                  Expanded(child: _buildStatCard(Icons.bolt, 'AI RECALLS', '124', Colors.green.shade100, Colors.green)),
-                ],
-              ),
-              const SizedBox(height: 40),
-
-              const Text(
-                'Recent Intelligence',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1F2937)),
-              ),
-              const SizedBox(height: 16),
-
-              if (nodes.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(32.0),
-                  child: Center(child: Text("No memories yet. Tap '+' to add your first PDF.")),
-                )
-              else
-                // Responsive Grid for the Split Cards
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 400, // Max width of a card before it wraps
-                    mainAxisSpacing: 24,
-                    crossAxisSpacing: 24,
-                    childAspectRatio: 0.8, // Adjusts the height of the cards
-                  ),
-                  itemCount: nodes.length,
-                  itemBuilder: (context, index) {
-                    final node = nodes[index];
-                    return _buildMemoryCard(context, node);
-                  },
                 ),
+              ),
             ],
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Navigator.pushNamed(context, '/upload'),
-        backgroundColor: const Color(0xFF5A52FF),
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text("Add to Bank", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ),
       ),
     );
   }
 
-  // Helper to build the Drawer items
-  Widget _buildDrawerItem(IconData icon, String title, {bool isActive = false}) {
+  // --- HELPER WIDGETS ---
+
+  // For the main navigation items (highlights when selected)
+  Widget _buildDrawerItem(IconData icon, String title, int index) {
+    bool isActive = _selectedIndex == index;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: ListTile(
@@ -301,15 +499,24 @@ class _MyHomePageState extends State<MyHomePage> {
             fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
           ),
         ),
-        onTap: () {
-          // Close the drawer when tapped
-          Navigator.pop(context); 
-        },
+        onTap: () => _onDrawerItemTapped(index),
       ),
     );
   }
 
-  // Helper for Stat Cards
+  // For the bottom action items (Settings, Logout)
+  Widget _buildActionItem(IconData icon, String title, {Color? color, required VoidCallback onTap}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: ListTile(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        leading: Icon(icon, color: color ?? Colors.grey.shade700),
+        title: Text(title, style: TextStyle(color: color ?? Colors.grey.shade800, fontWeight: FontWeight.bold)),
+        onTap: onTap,
+      ),
+    );
+  }
+
   Widget _buildStatCard(IconData icon, String title, String value, Color bgColor, Color iconColor) {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -339,9 +546,7 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  // --- THE NEW SPLIT CARD FOR FIREBASE DATA ---
   Widget _buildMemoryCard(BuildContext context, MemoryNode node) {
-    // Format the date if it exists
     String dateStr = 'Just now';
     if (node.timestamp != null) {
       dateStr = DateFormat('MM/dd/yyyy').format(node.timestamp!);
@@ -360,33 +565,39 @@ class _MyHomePageState extends State<MyHomePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // TOP SECTION: File Details (Clickable)
           Expanded(
             flex: 3,
             child: Material(
               color: Colors.transparent,
               child: InkWell(
-                onTap: () => _showNodeDetails(context, node), // Opens full details
+                onTap: () => _showNodeDetails(context, node),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // Visual File Area
                     Expanded(
                       child: Container(
-                        color: Colors.grey.shade100,
-                        child: Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.picture_as_pdf, size: 48, color: Colors.red.shade300),
-                              const SizedBox(height: 8),
-                              const Text("PDF Document", style: TextStyle(color: Colors.grey, fontSize: 12)),
-                            ],
-                          ),
-                        ),
+                        color: Colors.grey.shade200,
+                        child: node.fileUrl != null && node.fileUrl!.isNotEmpty
+                            ? IgnorePointer(
+                                child: SfPdfViewer.network(
+                                  node.fileUrl!,
+                                  canShowScrollHead: false,
+                                  canShowScrollStatus: false,
+                                  canShowPaginationDialog: false,
+                                ),
+                              )
+                            : Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.picture_as_pdf, size: 48, color: Colors.red.shade300),
+                                    const SizedBox(height: 8),
+                                    const Text("PDF Document", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                                  ],
+                                ),
+                              ),
                       ),
                     ),
-                    // Title, Date, Tags Area
                     Padding(
                       padding: const EdgeInsets.all(16.0),
                       child: Column(
@@ -405,15 +616,21 @@ class _MyHomePageState extends State<MyHomePage> {
                               ),
                               const SizedBox(width: 8),
                               Text(dateStr, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+                              const SizedBox(width: 4),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(), 
+                                onPressed: () => _confirmDelete(context, node),
+                              ),
                             ],
                           ),
                           const SizedBox(height: 12),
-                          // Tags
                           Wrap(
                             spacing: 8,
                             runSpacing: 8,
                             children: node.tags.isEmpty 
-                              ? [_buildTag('DECISION')] 
+                              ? [_buildTag('NEW UPLOAD')] 
                               : node.tags.map((tag) => _buildTag(tag.toUpperCase())).toList(),
                           ),
                         ],
@@ -427,13 +644,12 @@ class _MyHomePageState extends State<MyHomePage> {
           
           const Divider(height: 1, thickness: 1, color: Color(0xFFEEEEEE)),
           
-          // BOTTOM SECTION: AI Summary (Clickable)
           Expanded(
             flex: 1,
             child: Material(
               color: const Color(0xFFF8F9FA), 
               child: InkWell(
-                onTap: () => _showNodeDetails(context, node), // Opens full details
+                onTap: () => _showNodeDetails(context, node), 
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
