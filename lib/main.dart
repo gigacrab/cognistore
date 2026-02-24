@@ -8,6 +8,7 @@ import 'package:cognistore/models/memory_node.dart';
 import 'firebase_options.dart';
 import 'package:intl/intl.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -68,6 +69,21 @@ class _MyHomePageState extends State<MyHomePage> {
 
   // App Bar titles corresponding to the selected index
   final List<String> _titles = ['Overview', 'Recall', 'Knowledge Bank'];
+  final TextEditingController _recallController = TextEditingController();
+
+  void _sendRecallQuery() async {
+    final text = _recallController.text.trim();
+    if (text.isEmpty) return;
+
+    // 1. Clear the UI immediately for a fast feel
+    _recallController.clear();
+
+    // 2. Just call your service! 
+    // This already handles the UID, 'messages' collection, and 'user' role.
+    await DatabaseService().sendQuestion(text);
+  }
+
+
 
   void _onDrawerItemTapped(int index) {
     setState(() {
@@ -180,6 +196,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.white,
@@ -361,7 +378,7 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget _buildSmartRecall() {
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 800), // Keeps it nice on wide screens
+        constraints: const BoxConstraints(maxWidth: 800),
         child: Padding(
           padding: const EdgeInsets.all(32.0),
           child: Column(
@@ -378,7 +395,6 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
               const SizedBox(height: 32),
               
-              // The Chat Box UI
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
@@ -405,36 +421,40 @@ class _MyHomePageState extends State<MyHomePage> {
                         ),
                       ),
                       
-                      // Chat Body
+                      // --- LIVE CHAT BODY ---
                       Expanded(
-                        child: ListView(
-                          padding: const EdgeInsets.all(24),
-                          children: [
-                            // AI Welcome Bubble
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  border: Border.all(color: Colors.grey.shade300),
-                                  borderRadius: const BorderRadius.only(
-                                    topLeft: Radius.circular(12),
-                                    topRight: Radius.circular(12),
-                                    bottomRight: Radius.circular(12),
-                                  ),
-                                ),
-                                child: const Text(
-                                  'Hello! I am your Intelligent Memory assistant. Ask me anything about your uploaded documents, like "What were the key decisions in the last meeting?" or "Why did the server crash last Tuesday?"',
-                                  style: TextStyle(height: 1.5, fontSize: 14),
-                                ),
-                              ),
-                            )
-                          ],
+                        child: StreamBuilder<QuerySnapshot>(
+                          // Change this line in _buildSmartRecall
+                          stream: FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(FirebaseAuth.instance.currentUser!.uid)
+                              .collection('messages') // Match the path in your Cloud Function
+                              .orderBy('createdAt', descending: true)
+                              .limit(40)
+                              .snapshots(),
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                            
+                            final docs = snapshot.data!.docs;
+
+                            return ListView.builder(
+                              reverse: true, // Keep latest messages at bottom
+                              padding: const EdgeInsets.all(24),
+                              itemCount: docs.length + 1,
+                              itemBuilder: (context, index) {
+                                if (index == docs.length) {
+                                  // Default Welcome Message
+                                  return _buildChatBubble('Hello! I am your Intelligent Memory assistant. Ask me anything about your uploaded documents.', false);
+                                }
+                                final data = docs[index].data() as Map<String, dynamic>;
+                                return _buildChatBubble(data['text'] ?? '', data['role'] == 'user');
+                              },
+                            );
+                          },
                         ),
                       ),
                       
-                      // Input Field Area
+                      // --- INPUT FIELD ---
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
@@ -442,8 +462,10 @@ class _MyHomePageState extends State<MyHomePage> {
                           border: Border(top: BorderSide(color: Colors.grey.shade200)),
                         ),
                         child: TextField(
+                          controller: _recallController,
+                          onSubmitted: (_) => _sendRecallQuery(),
                           decoration: InputDecoration(
-                            hintText: 'Search company memory...',
+                            hintText: 'Ask company memory...',
                             hintStyle: TextStyle(color: Colors.grey.shade400),
                             filled: true,
                             fillColor: const Color(0xFFF8F9FA),
@@ -454,16 +476,11 @@ class _MyHomePageState extends State<MyHomePage> {
                             ),
                             suffixIcon: Padding(
                               padding: const EdgeInsets.all(4.0),
-                              child: Container(
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFFE0E0E0),
-                                  shape: BoxShape.circle,
-                                ),
+                              child: CircleAvatar(
+                                backgroundColor: const Color(0xFF5A52FF),
                                 child: IconButton(
                                   icon: const Icon(Icons.send, color: Colors.white, size: 18),
-                                  onPressed: () {
-                                    // TODO: Implement search logic
-                                  },
+                                  onPressed: _sendRecallQuery,
                                 ),
                               ),
                             ),
@@ -481,7 +498,37 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
+
   // --- HELPER WIDGETS ---
+  Widget _buildChatBubble(String text, bool isUser) {
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.all(16),
+        constraints: const BoxConstraints(maxWidth: 500),
+        decoration: BoxDecoration(
+          color: isUser ? const Color(0xFF5A52FF) : Colors.white,
+          border: isUser ? null : Border.all(color: Colors.grey.shade300),
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(12),
+            topRight: const Radius.circular(12),
+            bottomLeft: isUser ? const Radius.circular(12) : Radius.zero,
+            bottomRight: isUser ? Radius.zero : const Radius.circular(12),
+          ),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            color: isUser ? Colors.white : Colors.black87,
+            height: 1.5,
+            fontSize: 14,
+          ),
+        ),
+      ),
+    );
+  }
+
 
   // For the main navigation items (highlights when selected)
   Widget _buildDrawerItem(IconData icon, String title, int index) {
