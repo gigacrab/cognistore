@@ -22,11 +22,7 @@
       "codebase": "default",
       "disallowLegacyRuntimeConfig": true,
       "predeploy": [
-<<<<<<< HEAD
         "npm --prefix \"$RESOURCE_DIR\" run build"
-=======
-        "npm --prefix functions run build"
->>>>>>> 0375a9129bfc99942532c0d8a8f2c6e2fd8d5cbe
       ],
       "source": "functions",
       "ignore": [
