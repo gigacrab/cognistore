@@ -23,6 +23,23 @@ class DatabaseService {
     await _nodeRef().doc(nodeId).delete();
   }
 
+  CollectionReference _chatRef() => 
+    _db.collection('users').doc(_uid).collection('messages');
+
+  // For your UI friend to send a question
+  Future<void> sendQuestion(String text) async {
+    await _chatRef().add({
+      'role': 'user',
+      'text': text,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // For your UI friend to show the chat
+  Stream<QuerySnapshot> streamChat() {
+    return _chatRef().orderBy('createdAt', descending: true).limit(40).snapshots();
+  }
+
   //For UI to build the smart recall list
   Stream<List<MemoryNode>> streamNodes(){
     return _nodeRef().orderBy('timestamp', descending: true)

@@ -19,7 +19,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "firebase": "^12.9.0",
+    "firebase-admin": "^12.7.0",
+    "firebase-function": "^1.4.121",
     "vite": "^7.3.1"
   }
 }
