@@ -1,15 +1,20 @@
 import * as admin from "firebase-admin";
 import { setGlobalOptions } from "firebase-functions/v2";
-import { onObjectFinalized } from "firebase-functions/v2/storage";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { onCallGenkit } from "firebase-functions/https";
 import { defineSecret } from "firebase-functions/params";
+import { genkit, z } from "genkit";
+import { googleAI } from "@genkit-ai/google-genai";
 
-const GEMINI_KEY = defineSecret("GOOGLE_GENAI_API_KEY");
+const apiKey = defineSecret("GOOGLE_GENAI_API_KEY");
 
 if (admin.apps.length === 0) {
     admin.initializeApp();
 }
+
+const ai = genkit({
+    plugins: [googleAI()],
+});
 
 setGlobalOptions({
     maxInstances: 10,
@@ -17,6 +22,30 @@ setGlobalOptions({
     memory: "1GiB",
     timeoutSeconds: 120
 });
+
+export const aiSummaryFlow = ai.defineFlow({
+    name: "aiSummaryFlow",
+    inputSchema: z.string().describe("Full extracted PDF text").default("nothing"),
+    outputSchema: z.string(),
+}, async (extractedText) => {
+    const prompt = `
+      You are a highly intelligent corporate assistant. Please read the following document text and provide a concise, 2-sentence summary of the main decisions, trade-offs, or insights.
+        
+      Document Text:
+      ${extractedText}
+    `;
+    const response = await ai.generate({
+        // FIX 1: Upgraded to the active 2.5 model
+        model: googleAI.model("gemini-2.5-flash"), 
+        prompt: prompt,
+    });
+    return response.text;
+});
+
+export const generateSummary = onCallGenkit({
+    authPolicy: (auth) => !!auth?.uid,
+    secrets: [apiKey],
+}, aiSummaryFlow);
 
 function chunkTextSafe(full: string, maxLen: number, overlap: number): string[] {
     const out: string[] = [];
@@ -43,100 +72,77 @@ function pickTopChunks(queryText: string, chunks: any[], k: number) {
     return scored.sort((a: any, b: any) => b.score - a.score).slice(0, k);
 }
 
-export const onPdfUploaded = onObjectFinalized({ secrets: [GEMINI_KEY] }, async (event) => {
-    const genAI = new GoogleGenerativeAI(GEMINI_KEY.value());
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-    const filePath = event.data.name;
-    if (!filePath || !filePath.endsWith(".pdf")) return;
+export const onNodeCreated = onDocumentCreated({
+    document: "users/{userId}/nodes/{nodeId}",
+}, async (event) => {
+    const data = event.data?.data();
+    if (!data || !data.fullContent) return; 
 
     try {
-        const bucket = admin.storage().bucket(event.data.bucket);
-        const [fileBuffer] = await bucket.file(filePath).download();
-
-        const prompt = `You will receive a PDF. Return EXACTLY this format:
-<SUMMARY>2-3 sentences about what the document is about.</SUMMARY>
-<TEXT>All readable text in reading order.</TEXT>`;
-
-        const result = await model.generateContent([
-            prompt,
-            { inlineData: { data: fileBuffer.toString("base64"), mimeType: "application/pdf" } }
-        ]);
-
-        const raw = result.response.text();
-        const summary = raw.match(/<SUMMARY>([\s\S]*?)<\/SUMMARY>/i)?.[1]?.trim() || "";
-        const extracted = raw.match(/<TEXT>([\s\S]*?)<\/TEXT>/i)?.[1]?.trim() || "";
-
         const db = admin.firestore();
-        const nodes = await db.collectionGroup("nodes").where("fileUrl", "==", filePath).get();
-
-        if (nodes.empty) return;
-        const nodeDoc = nodes.docs[0];
-
-        const chunks = extracted.length > 0 ? chunkTextSafe(extracted, 1200, 200) : ["Empty"];
-        const chunkColl = nodeDoc.ref.collection("chunks");
-
+        const chunks = chunkTextSafe(data.fullContent, 1200, 200);
         const batch = db.batch();
+
         chunks.forEach((text, i) => {
-            const ref = chunkColl.doc();
+            const ref = event.data!.ref.collection("chunks").doc();
             batch.set(ref, { text, createdAt: admin.firestore.FieldValue.serverTimestamp(), idx: i });
         });
-        await batch.commit();
 
-        await nodeDoc.ref.update({ summary, fullContent: extracted, status: "done" });
+        await batch.commit();
     } catch (err) {
-        console.error("PDF Processing Error:", err);
+        console.error("Chunk Creation Error:", err);
     }
 });
 
 export const smartRecallChat = onDocumentCreated({
     document: "users/{userId}/messages/{messageId}",
-    secrets: [GEMINI_KEY]
+    secrets: [apiKey]
 }, async (event) => {
+    console.log("🔥 [SmartRecall] Triggered!");
+
     const data = event.data?.data();
-    if (!data || data.role !== "user") return;
+    if (!data || data.role !== "user") {
+        return;
+    }
 
     try {
-        const genAI = new GoogleGenerativeAI(GEMINI_KEY.value());
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         const db = admin.firestore();
         const { userId } = event.params;
+        console.log(`👤 [SmartRecall] Processing request for User ID: ${userId}`);
 
-        const chunkSnap = await db.collectionGroup("chunks").get();
-        const currentChunks = chunkSnap.docs
-            .filter(doc => doc.ref.path.includes(`users/${userId}`))
-            .map(d => d.data());
-
-        const top = pickTopChunks(data.text, currentChunks, 6);
-        const context = top.map((c) => `Content: ${c.text}`).join("\n---\n");
-
-        const histSnap = await db.collection(`users/${userId}/messages`)
-            .orderBy("createdAt", "desc")
-            .limit(5)
-            .get();
-
-        const history = histSnap.docs
-            .map(d => d.data())
-            .reverse()
-            .map(m => `${m.role}: ${m.text}`)
-            .join("\n");
-
-        const prompt = `You are Cognistore AI. Use the context to answer. 
-        If not found, say it's not in your memory bank.
+        const nodesSnap = await db.collection('users').doc(userId).collection('nodes').get();
+        let allChunks: any[] = [];
         
-        History: ${history}
-        Context: ${context}
-        User: ${data.text}`;
+        for (const nodeDoc of nodesSnap.docs) {
+            const chunksSnap = await nodeDoc.ref.collection('chunks').get();
+            allChunks.push(...chunksSnap.docs.map(d => d.data()));
+        }
 
-        const result = await model.generateContent(prompt);
+        console.log(`✅ [SmartRecall] Total chunks collected: ${allChunks.length}`);
 
+        let context = "No documents found.";
+        if (allChunks.length > 0) {
+            const top = pickTopChunks(data.text, allChunks, 6);
+            context = top.map((c) => c.text).join("\n---\n");
+        }
+
+        console.log("🤖 [SmartRecall] Sending prompt to Genkit...");
+        const result = await ai.generate({
+            // FIX 2: Upgraded to the active 2.5 model
+            model: googleAI.model("gemini-2.5-flash"),
+            prompt: `You are Cognistore AI. Use the provided context to answer the user's question. If the context is empty or the answer isn't there, politely say you don't know based on the uploaded documents.\n\nContext: ${context}\n\nUser: ${data.text}`
+        });
+
+        console.log("✅ [SmartRecall] Received response! Writing to Firestore...");
         await event.data?.ref.parent.add({
             role: "assistant",
-            text: result.response.text(),
+            text: result.text,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
 
+        console.log("🎉 [SmartRecall] Success!");
+
     } catch (err) {
-        console.error("Recall Chat Error:", err);
+        console.error("🚨 [SmartRecall] CRITICAL ERROR:", err);
     }
 });

@@ -422,37 +422,40 @@ class _MyHomePageState extends State<MyHomePage> {
                       ),
                       
                       // --- LIVE CHAT BODY ---
+                      // Inside _buildSmartRecall in main.dart
+                      // ... existing UI code ...
+                      // --- LIVE CHAT BODY ---
                       Expanded(
                         child: StreamBuilder<QuerySnapshot>(
-                          // Change this line in _buildSmartRecall
-                          stream: FirebaseFirestore.instance
-                              .collection('users')
-                              .doc(FirebaseAuth.instance.currentUser!.uid)
-                              .collection('messages') // Match the path in your Cloud Function
-                              .orderBy('createdAt', descending: true)
-                              .limit(40)
-                              .snapshots(),
+                          // USE THE HELPER FROM DATABASE SERVICE
+                          stream: DatabaseService().streamChat(), 
                           builder: (context, snapshot) {
-                            if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                            if (snapshot.connectionState == ConnectionState.waiting) {
+                              return const Center(child: CircularProgressIndicator());
+                            }
+                            
+                            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                              return _buildChatBubble('Hello! I am your Intelligent Memory assistant. Ask me anything about your uploaded documents.', false);
+                            }
                             
                             final docs = snapshot.data!.docs;
 
                             return ListView.builder(
-                              reverse: true, // Keep latest messages at bottom
+                              reverse: true, 
                               padding: const EdgeInsets.all(24),
-                              itemCount: docs.length + 1,
+                              itemCount: docs.length,
                               itemBuilder: (context, index) {
-                                if (index == docs.length) {
-                                  // Default Welcome Message
-                                  return _buildChatBubble('Hello! I am your Intelligent Memory assistant. Ask me anything about your uploaded documents.', false);
-                                }
                                 final data = docs[index].data() as Map<String, dynamic>;
-                                return _buildChatBubble(data['text'] ?? '', data['role'] == 'user');
+                                return _buildChatBubble(
+                                  data['text'] ?? '', 
+                                  data['role'] == 'user'
+                                );
                               },
                             );
                           },
                         ),
                       ),
+                      // ... rest of UI ...,
                       
                       // --- INPUT FIELD ---
                       Container(
