@@ -36,3 +36,4 @@ dist/
 /.flutter-plugins-dependencies
 /build/
 /pubspec.lock
+/.idea/
