@@ -11,7 +11,7 @@ class DatabaseService {
   CollectionReference _nodeRef() =>
     _db.collection('users').doc(_uid).collection('nodes');
   CollectionReference _edgeRef() =>
-      _db.collection('users').doc(_uid).collection('edges');
+    _db.collection('users').doc(_uid).collection('edges');
 
   //To save AI output
   Future<String> createNode(MemoryNode node) async{

@@ -4,9 +4,22 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cognistore/database_service.dart';
 import 'package:cognistore/models/memory_node.dart';
 import 'package:firebase_auth/firebase_auth.dart';	
+import 'package:cloud_functions/cloud_functions.dart';
 
-import 'package:google_generative_ai/google_generative_ai.dart';
+// not using this here anymore
+//import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
+
+// asynchronous function that'll return a String in the future
+// this dart function can call backend cloud functions over HTTPS
+Future<String> getAISummary(String extractedText) async {
+  final callable =
+      FirebaseFunctions.instance.httpsCallable('generateSummary');
+
+  final result = await callable.call(extractedText);
+
+  return result.data;
+}
 
 class UploadScreen extends StatefulWidget{
   const UploadScreen({super.key});
@@ -69,23 +82,13 @@ class _UploadScreenState extends State<UploadScreen>{
       String aiSummary = userDescription; 
       
       if (extractedText.trim().isNotEmpty) {
-        final model = GenerativeModel(
-          model: 'gemini-2.5-flash', 
-          apiKey: 'AIzaSyAuWHoXG2LGDoLN3Q8lUfvzVQ8xFUv0wx4', // <-- Ensure your key is here when testing
-        );
-
-        final prompt = '''
-        You are a highly intelligent corporate assistant. Please read the following document text and provide a concise, 2-sentence summary of the main decisions, trade-offs, or insights.
-        
-        Document Text:
-        $extractedText
-        ''';
-
-        final response = await model.generateContent([Content.text(prompt)]);
-        if (response.text != null && response.text!.isNotEmpty) {
-           aiSummary = response.text!.trim();
+        try {
+          aiSummary = await getAISummary(extractedText);
+          debugPrint("It's a success!");
+        } catch (e) {
+          debugPrint("Error calling AI summary: $e");
         }
-      }
+      } 
 
       // Create the memory node object with real AI data
       MemoryNode newNode = MemoryNode(

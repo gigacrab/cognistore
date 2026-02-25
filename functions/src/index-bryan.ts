@@ -1,3 +1,4 @@
+import {setGlobalOptions} from "firebase-functions";
 import {genkit, z} from "genkit";
 import {googleAI} from "@genkit-ai/google-genai";
 
@@ -14,12 +15,14 @@ import { onCallGenkit } from "firebase-functions/https";
 // If you are using Vertex Express Mode (vertexAI with apiKey) you can get an API key
 // from the Vertex AI Studio Express Mode setup.
 import { defineSecret } from "firebase-functions/params";
-const apiKey = defineSecret("GOOGLE_GENAI_API_KEY");
 
-// The Firebase telemetry plugin exports a combination of metrics, traces, and logs to Google Cloud
-// Observability. See https://firebase.google.com/docs/genkit/observability/telemetry-collection.
-// import {enableFirebaseTelemetry} from "@genkit-ai/firebase";
-// enableFirebaseTelemetry();
+// use the command below to provide the key
+// firebase functions:secrets:set GOOGLE_GENAI_API_KEY
+// make sure you're logged in and have selected the project and all that
+// you'd be prompted to enter the API key, do so
+// ok it appears it's stored in Google servers when I ran it so we don't have to worry about it anymore
+const apiKey = defineSecret("GOOGLE_GENAI_API_KEY");
+setGlobalOptions({ maxInstances: 10 });
 
 const ai = genkit({
   plugins: [
@@ -32,45 +35,47 @@ const ai = genkit({
 });
 
 // Define a simple flow that prompts an LLM to generate menu suggestions.
-const menuSuggestionFlow = ai.defineFlow({
-    name: "menuSuggestionFlow",
-    inputSchema: z.string().describe("A restaurant theme").default("seafood"),
+const aiSummaryFlow = ai.defineFlow({
+    name: "aiSummaryFlow",
+    // IO schemas, basically defines input parameters and return values
+    // negating the need to perform manual type checks
+    inputSchema: z.string().describe("Full extracted PDF text").default("nothing"),
     outputSchema: z.string(),
-    streamSchema: z.string(),
-  }, async (subject, { sendChunk }) => {
+    // subject is the validated input, while sendChunk is the streaming function
+  }, async (extractedText) => {
     // Construct a request and send it to the model API.
-    const prompt =
-      `Suggest an item for the menu of a ${subject} themed restaurant`;
-    const { response, stream } = ai.generateStream({
+    const prompt = `
+      You are a highly intelligent corporate assistant. Please read the following document text and provide a concise, 2-sentence summary of the main decisions, trade-offs, or insights.
+        
+      Document Text:
+      ${extractedText}
+      `;
+    // Generate without streaming
+    const response = await ai.generate({
       model: googleAI.model("gemini-2.5-flash"),
       prompt: prompt,
-      config: {
-        temperature: 1,
-      },
     });
 
-    for await (const chunk of stream) {
-      sendChunk(chunk.text);
-    }
+    // more complex workflows are present when the output isn't just a string
+    // but may be fed into another LLM model, who knows
 
-    // Handle the response from the model API. In this sample, we just
-    // convert it to a string, but more complicated flows might coerce the
-    // response into structured output or chain the response into another
-    // LLM call, etc.
-    return (await response).text;
+    // response resolves when the generation is complete, we wait for it
+    // .text extracts the full final output string which matches the schema!
+    return response.text;
   }
 );
 
-export const menuSuggestion = onCallGenkit({
+export const generateSummary = onCallGenkit({
   // Uncomment to enable AppCheck. This can reduce costs by ensuring only your Verified
   // app users can use your API. Read more at https://firebase.google.com/docs/app-check/cloud-functions
-  // enforceAppCheck: true,
+  //enforceAppCheck: true,
 
   // authPolicy can be any callback that accepts an AuthData (a uid and tokens dictionary) and the
   // request data. The isSignedIn() and hasClaim() helpers can be used to simplify. The following
   // will require the user to have the email_verified claim, for example.
   // authPolicy: hasClaim("email_verified"),
+  authPolicy: (auth) => !!auth?.uid,
 
   // Grant access to the API key to this function:
   secrets: [apiKey],
-}, menuSuggestionFlow);
+}, aiSummaryFlow);
