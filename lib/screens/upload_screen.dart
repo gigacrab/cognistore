@@ -3,12 +3,12 @@ import 'package:file_picker/file_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cognistore/database_service.dart';
 import 'package:cognistore/models/memory_node.dart';
-import 'package:firebase_auth/firebase_auth.dart';	
+import 'package:firebase_auth/firebase_auth.dart';  
 import 'package:cloud_functions/cloud_functions.dart';
-
-// not using this here anymore
-//import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
+
+// 🔴 IF THIS LINE IS RED: You need to run 'flutter pub add dotted_border' in the terminal
+import 'package:dotted_border/dotted_border.dart';
 
 // asynchronous function that'll return a String in the future
 // this dart function can call backend cloud functions over HTTPS
@@ -50,7 +50,10 @@ class _UploadScreenState extends State<UploadScreen>{
   Future<void> uploadFile() async {
     if (_pickedFile == null) return;
 
-    setState(()=> _isUploading = true);
+    setState(() {
+      _isUploading = true;
+      _statusMessage = "Uploading document to secure vault..."; // Update status
+    });
 
     try{
       // Get mandatory uid
@@ -58,14 +61,23 @@ class _UploadScreenState extends State<UploadScreen>{
 
       // Upload under uid folder, with timestamp in case there are duplicate files
       final ref = FirebaseStorage.instance
-				.ref()
-				.child("pdfs")
-				.child(uid)
-				.child('${DateTime.now().millisecondsSinceEpoch}_${_pickedFile!.name}');
+        .ref()
+        .child("pdfs")
+        .child(uid)
+        .child('${DateTime.now().millisecondsSinceEpoch}_${_pickedFile!.name}');
 
-      await ref.putData(_pickedFile!.bytes!);
+      // --- UPDATED UPLOAD COMMAND ---
+      await ref.putData(
+        _pickedFile!.bytes!,
+        SettableMetadata(
+          contentType: 'application/pdf',
+          contentDisposition: 'inline; filename="${_pickedFile!.name}"', // THIS STOPS THE AUTO-DOWNLOAD!
+        ),
+      );
       final url = await ref.getDownloadURL();
       String userDescription = _textNoteController.text;
+
+      setState(() => _statusMessage = "Extracting raw text from PDF...");
 
       // Extract Text from PDF Bytes
       String extractedText = '';
@@ -78,6 +90,8 @@ class _UploadScreenState extends State<UploadScreen>{
         extractedText = "Text extraction failed or document is an image-based PDF.";
       }
 
+      setState(() => _statusMessage = "AI is generating a smart summary...");
+
       // Call the Gemini AI API for Summary
       String aiSummary = userDescription; 
       
@@ -89,6 +103,8 @@ class _UploadScreenState extends State<UploadScreen>{
           debugPrint("Error calling AI summary: $e");
         }
       } 
+
+      setState(() => _statusMessage = "Saving to Memory Bank...");
 
       // Create the memory node object with real AI data
       MemoryNode newNode = MemoryNode(
@@ -134,95 +150,171 @@ class _UploadScreenState extends State<UploadScreen>{
   Widget build(BuildContext context){
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Data Uploader")
+        title: const Text("Add to Knowledge Bank", style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white,
+        elevation: 1,
       ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child:Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            children: [
-            const Text(
-                "Upload PDF",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
-                ),
-            const SizedBox(height:10),
-            GestureDetector(
-              onTap: selectFile,
-              child:Container(
-                height: 200,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius:BorderRadius.circular(15),
-                  border: Border.all(color: Colors.blue, style: BorderStyle.solid),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.picture_as_pdf, size:50, color: Colors.blue),
-                    const SizedBox(height: 10),
-                  
-                    Text(
-                      _pickedFile == null ?"Tap to select PDF": _pickedFile!.name,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    )
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 30),
-            const Text(
-              "Description",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _textNoteController,
-                maxLines: 5,
-                decoration: InputDecoration(
-                  hintText:"Type your decision, trade-offs, or notes here...",
-                  filled: true,
-                  fillColor: Colors.blue.withOpacity(0.1),
-                  enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(15),
-                  borderSide: const BorderSide(color: Colors.blue),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(15),
-                  borderSide: const BorderSide(color: Colors.blue, width: 2),
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
-              ),
-
-              ),
-            const SizedBox(height: 30),
-            
-            if (_pickedFile != null)
-              _isUploading
-                ? const CircularProgressIndicator()
-                : ElevatedButton.icon(
-                  onPressed: uploadFile,
-                  icon: const Icon(Icons.cloud_upload),
-                  label: const Text("Upload to Firebase"),
-                  style: ElevatedButton.styleFrom(minimumSize: const Size(200, 50)),
+      body: Center(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 600), 
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "Upload Document",
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1F2937))
                   ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "Upload a PDF. Our AI will automatically extract the text and generate a summary for your smart recall.",
+                    style: TextStyle(fontSize: 14, color: Colors.grey.shade600)
+                  ),
+                  const SizedBox(height: 32),
+                  
+                  // --- SLEEK DOTTED DROPZONE ---
+                  GestureDetector(
+                    onTap: _isUploading ? null : selectFile, // Disable clicking while uploading
+                    child: DottedBorder(
+                      
+                      // 🟢 UPDATED FOR DOTTED_BORDER 3.1.0 🟢
+                      options: RoundedRectDottedBorderOptions(
+                        radius: const Radius.circular(16),
+                        dashPattern: const [8, 4],
+                        color: const Color(0xFF5A52FF).withOpacity(0.5),
+                        strokeWidth: 2,
+                      ),
+                      
+                      child: Container(
+                        height: 200,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF5A52FF).withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _pickedFile == null ? Icons.cloud_upload_outlined : Icons.picture_as_pdf, 
+                              size: 64, 
+                              color: const Color(0xFF5A52FF)
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              _pickedFile == null 
+                                ? "Click to browse for a PDF" 
+                                : _pickedFile!.name,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold, 
+                                fontSize: 16,
+                                color: _pickedFile == null ? Colors.grey.shade700 : const Color(0xFF5A52FF)
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            if (_pickedFile != null) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                "Ready to process", 
+                                style: TextStyle(color: Colors.grey.shade600, fontSize: 12)
+                              )
+                            ]
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 32),
+                  const Text(
+                    "Additional Context (Optional)",
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _textNoteController,
+                    maxLines: 4,
+                    enabled: !_isUploading,
+                    decoration: InputDecoration(
+                      hintText: "Add any specific notes or context the AI should know...",
+                      hintStyle: TextStyle(color: Colors.grey.shade400),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF5A52FF), width: 2),
+                      ),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 40),
+                  
+                  // --- DYNAMIC LOADING BAR OR UPLOAD BUTTON ---
+                  if (_isUploading)
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: Column(
+                        children: [
+                          const LinearProgressIndicator(
+                            color: Color(0xFF5A52FF),
+                            backgroundColor: Color(0xFFEEF2FF),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            _statusMessage, 
+                            style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF5A52FF))
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _pickedFile == null ? null : uploadFile,
+                        icon: const Icon(Icons.auto_awesome, color: Colors.white),
+                        label: const Text("Process & Save Memory", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 20),
+                          backgroundColor: const Color(0xFF5A52FF),
+                          disabledBackgroundColor: Colors.grey.shade300,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
 
-            const SizedBox(height:20),
-
-            OutlinedButton.icon(
-              onPressed: () => Navigator.pop(context),
-              icon: const Icon(Icons.arrow_back),
-              label: const Text('Return'),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(200, 50),
+                  const SizedBox(height: 16),
+                  
+                  if (!_isUploading)
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 20),
+                        ),
+                        child: const Text('Cancel & Return', style: TextStyle(color: Colors.grey)),
+                      ),
+                    ),
+                ],
               ),
             ),
-            
-          ]),
-          
+          ),
         ),
       ),
     );

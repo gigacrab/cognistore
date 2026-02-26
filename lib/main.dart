@@ -7,8 +7,12 @@ import 'package:cognistore/database_service.dart';
 import 'package:cognistore/models/memory_node.dart';
 import 'firebase_options.dart';
 import 'package:intl/intl.dart';
-import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:web/web.dart' as web; // The modern web package
+import 'dart:ui_web' as ui_web;
+import 'package:shimmer/shimmer.dart';
+
+final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,34 +27,39 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Cognistore',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF5A52FF),
-          brightness: Brightness.light, 
-        ),
-        scaffoldBackgroundColor: const Color(0xFFF8F9FA),
-        useMaterial3: true,
-        fontFamily: 'Roboto',
-      ),
-      home: StreamBuilder<User?>(
-        stream: FirebaseAuth.instance.authStateChanges(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            );
-          }
-          if (snapshot.hasData) {
-            return const MyHomePage();
-          }
-          return const LoginScreen();
-        },
-      ),
-      routes: {
-        '/upload': (context) => const UploadScreen(),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (_, mode, __) {
+        return MaterialApp(
+          title: 'Cognistore',
+          debugShowCheckedModeBanner: false,
+          themeMode: mode,
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF5A52FF), brightness: Brightness.light),
+            scaffoldBackgroundColor: const Color(0xFFF8F9FA),
+            cardColor: Colors.white,
+            useMaterial3: true,
+            fontFamily: 'Roboto',
+          ),
+          darkTheme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF5A52FF), brightness: Brightness.dark),
+            scaffoldBackgroundColor: const Color(0xFF121212),
+            cardColor: const Color(0xFF1E1E1E),
+            useMaterial3: true,
+            fontFamily: 'Roboto',
+          ),
+          home: StreamBuilder<User?>(
+            stream: FirebaseAuth.instance.authStateChanges(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              }
+              if (snapshot.hasData) return const MyHomePage();
+              return const LoginScreen();
+            },
+          ),
+          routes: {'/upload': (context) => const UploadScreen()},
+        );
       },
     );
   }
@@ -64,32 +73,34 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  // --- NEW: State variable to track the active screen ---
   int _selectedIndex = 0;
-
-  // App Bar titles corresponding to the selected index
-  final List<String> _titles = ['Overview', 'Recall', 'Knowledge Bank'];
+  final List<String> _titles = ['Overview', 'Recall'];
   final TextEditingController _recallController = TextEditingController();
+
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  late Stream<List<MemoryNode>> _memoriesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _memoriesStream = DatabaseService().streamNodes(); 
+  }
 
   void _sendRecallQuery() async {
     final text = _recallController.text.trim();
     if (text.isEmpty) return;
 
-    // 1. Clear the UI immediately for a fast feel
     _recallController.clear();
-
-    // 2. Just call your service! 
-    // This already handles the UID, 'messages' collection, and 'user' role.
     await DatabaseService().sendQuestion(text);
   }
-
-
 
   void _onDrawerItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
     });
-    Navigator.pop(context); // Close the drawer
+    Navigator.pop(context); 
   }
   
   void _confirmDelete(BuildContext context, MemoryNode node) {
@@ -119,6 +130,10 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void _showNodeDetails(BuildContext context, MemoryNode node) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color textColor = isDark ? Colors.white : Colors.black87;
+    Color subTextColor = isDark ? Colors.grey.shade400 : Colors.grey.shade700;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -149,8 +164,8 @@ class _MyHomePageState extends State<MyHomePage> {
                   controller: controller,
                   children: [
                     SelectableText(node.title,
-                        style: const TextStyle(
-                            fontSize: 24, fontWeight: FontWeight.bold)),
+                        style: TextStyle(
+                            fontSize: 24, fontWeight: FontWeight.bold, color: textColor)),
                     const SizedBox(height: 16),
                     
                     const Text("AI Summary",
@@ -162,7 +177,50 @@ class _MyHomePageState extends State<MyHomePage> {
                     const SizedBox(height: 8),
                     SelectableText(
                       node.summary.isEmpty ? "No summary available." : node.summary,
-                      style: const TextStyle(height: 1.5, fontSize: 16, fontWeight: FontWeight.w500),
+                      style: TextStyle(height: 1.5, fontSize: 16, fontWeight: FontWeight.w500, color: textColor),
+                    ),
+                    const SizedBox(height: 24),
+
+                    const Text("Original Document",
+                        style: TextStyle(
+                            color: Color(0xFF5A52FF),
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold)),
+                    const Divider(),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF2C2C2C) : const Color(0xFFF3F0FF),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFF5A52FF).withOpacity(0.3)),
+                      ),
+                      child: Column(
+                        children: [
+                          const Icon(Icons.picture_as_pdf, size: 48, color: Color(0xFF5A52FF)),
+                          const SizedBox(height: 12),
+                          
+                          if (node.fileUrl != null && node.fileUrl!.isNotEmpty)
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                web.window.open(node.fileUrl!, '_blank');
+                              }, 
+                              icon: const Icon(Icons.open_in_new, color: Colors.white), 
+                              label: const Text("Open Original PDF", style: TextStyle(color: Colors.white)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF5A52FF),
+                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)
+                              ),
+                            )
+                          else
+                            const Text(
+                              "No PDF file linked to this memory.\n(It may be an older test upload)", 
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.redAccent, fontStyle: FontStyle.italic)
+                            ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 24),
 
@@ -177,7 +235,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       node.fullContent.isEmpty
                           ? "No detailed content extracted yet."
                           : node.fullContent,
-                      style: const TextStyle(height: 1.5, fontSize: 14, color: Colors.black87),
+                      style: TextStyle(height: 1.5, fontSize: 14, color: subTextColor),
                     ),
                     const SizedBox(height: 20),
                     
@@ -196,64 +254,77 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color appBarBg = Theme.of(context).scaffoldBackgroundColor;
+    Color textColor = isDark ? Colors.white : const Color(0xFF1F2937);
+
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        title: Text(_titles[_selectedIndex], style: const TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: appBarBg,
+        title: Text(_titles[_selectedIndex], style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
         elevation: 1,
         shadowColor: Colors.black12,
+        iconTheme: IconThemeData(color: textColor),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: CircleAvatar(
-              backgroundColor: Colors.grey.shade200,
+              backgroundColor: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
               child: const Icon(Icons.person, color: Colors.grey),
             ),
           )
         ],
       ),
       
-      // --- UPDATED DRAWER ---
       drawer: Drawer(
-        backgroundColor: Colors.white,
+        backgroundColor: Theme.of(context).cardColor,
         child: Column(
           children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(color: Color(0xFFF8F9FA)),
+            DrawerHeader(
+              decoration: BoxDecoration(color: appBarBg),
               child: Row(
                 children: [
-                  Icon(Icons.menu_book, color: Color(0xFF5A52FF), size: 32),
-                  SizedBox(width: 12),
+                  const Icon(Icons.menu_book, color: Color(0xFF5A52FF), size: 32),
+                  const SizedBox(width: 12),
                   Text(
                     'CogniStore',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: textColor),
                   ),
                 ],
               ),
             ),
             
-            // Top Navigation Items
             _buildDrawerItem(Icons.grid_view, 'Dashboard', 0),
             _buildDrawerItem(Icons.search, 'Smart Recall', 1),
-            _buildDrawerItem(Icons.folder_open, 'Knowledge Bank', 2),
             
-            // Spacer pushes everything below it to the bottom of the drawer
             const Spacer(),
-            
             const Divider(height: 1),
             const SizedBox(height: 8),
-
-            // Bottom Actions (Invite, Settings, Sign Out)
+            
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: ValueListenableBuilder<ThemeMode>(
+                valueListenable: themeNotifier,
+                builder: (context, mode, _) {
+                  final isDarkMode = mode == ThemeMode.dark;
+                  return SwitchListTile(
+                    title: Text('Dark Mode', style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
+                    secondary: Icon(isDarkMode ? Icons.dark_mode : Icons.light_mode, color: const Color(0xFF5A52FF)),
+                    value: isDarkMode,
+                    activeColor: const Color(0xFF5A52FF),
+                    onChanged: (val) => themeNotifier.value = val ? ThemeMode.dark : ThemeMode.light,
+                  );
+                },
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               child: ListTile(
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                tileColor: const Color(0xFFEEF2FF), // Light purple background
+                tileColor: isDark ? const Color(0xFF2C2C2C) : const Color(0xFFEEF2FF),
                 leading: const Icon(Icons.group_add_outlined, color: Color(0xFF5A52FF)),
                 title: const Text('Invite Team', style: TextStyle(color: Color(0xFF5A52FF), fontWeight: FontWeight.bold)),
                 onTap: () {
-                  // TODO: Implement collaboration features
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Collaboration coming soon!")));
                   Navigator.pop(context);
                 },
@@ -269,14 +340,9 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
       ),
       
-      // --- DYNAMIC BODY RENDERING ---
       body: _selectedIndex == 0 
           ? _buildDashboard() 
-          : _selectedIndex == 1 
-              ? _buildSmartRecall() 
-              : const Center(child: Text("Knowledge Bank Coming Soon")),
-
-      // Only show the Floating Action Button on the Dashboard
+          : _buildSmartRecall(),
       floatingActionButton: _selectedIndex == 0 
         ? FloatingActionButton.extended(
             onPressed: () => Navigator.pushNamed(context, '/upload'),
@@ -288,16 +354,54 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  // --- SCREEN 1: THE DASHBOARD ---
   Widget _buildDashboard() {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color textColor = isDark ? Colors.white : const Color(0xFF1F2937);
+    Color subTextColor = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
+
     return StreamBuilder<List<MemoryNode>>(
-      stream: DatabaseService().streamNodes(),
+      stream: _memoriesStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              Shimmer.fromColors(
+                baseColor: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+                highlightColor: isDark ? Colors.grey.shade700 : Colors.grey.shade50,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(height: 32, width: 250, color: Theme.of(context).cardColor),
+                    const SizedBox(height: 8),
+                    Container(height: 16, width: 350, color: Theme.of(context).cardColor),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 40),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 400,
+                  mainAxisSpacing: 24,
+                  crossAxisSpacing: 24,
+                  childAspectRatio: 0.8, 
+                ),
+                itemCount: 3, 
+                itemBuilder: (context, index) => _buildShimmerCard(),
+              ),
+            ],
+          );
         }
         
-        final nodes = snapshot.data ?? [];
+        final allNodes = snapshot.data ?? [];
+        final nodes = allNodes.where((node) {
+          final titleMatch = node.title.toLowerCase().contains(_searchQuery);
+          final summaryMatch = node.summary.toLowerCase().contains(_searchQuery);
+          final tagsMatch = node.tags.any((tag) => tag.toLowerCase().contains(_searchQuery));
+          return titleMatch || summaryMatch || tagsMatch; 
+        }).toList();
 
         return ListView(
           padding: const EdgeInsets.all(24),
@@ -308,12 +412,12 @@ class _MyHomePageState extends State<MyHomePage> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Welcome back, Jayden!',
+                    Text(
+                      'Welcome back, ${FirebaseAuth.instance.currentUser?.displayName ?? 'User'}!',
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF1F2937),
+                        color: textColor,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -321,7 +425,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       'Here is the latest from your company\'s memory bank.',
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.grey.shade600,
+                        color: subTextColor,
                       ),
                     ),
                   ],
@@ -334,23 +438,27 @@ class _MyHomePageState extends State<MyHomePage> {
               children: [
                 Expanded(
                   flex: 1, 
-                  child: _buildStatCard(Icons.book, 'TOTAL MEMORIES', '${nodes.length}', Colors.indigo.shade100, Colors.indigo)
+                  child: _buildStatCard(Icons.book, 'TOTAL MEMORIES', '${nodes.length}', isDark ? const Color(0xFF2C2C2C) : Colors.indigo.shade100, Colors.indigo)
                 ),
                 const Spacer(flex: 1), 
               ],
             ),
             const SizedBox(height: 40),
 
-            const Text(
+            _buildSearchBar(),
+            const SizedBox(height: 32),
+
+            Text(
               'Recent Intelligence',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1F2937)),
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textColor),
             ),
+            
             const SizedBox(height: 16),
 
             if (nodes.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(32.0),
-                child: Center(child: Text("No memories yet. Tap '+' to add your first PDF.")),
+              Padding(
+                padding: const EdgeInsets.all(32.0),
+                child: Center(child: Text("No memories yet. Tap '+' to add your first PDF.", style: TextStyle(color: subTextColor))),
               )
             else
               GridView.builder(
@@ -374,8 +482,10 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  // --- SCREEN 2: SMART RECALL ---
   Widget _buildSmartRecall() {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color textColor = isDark ? Colors.white : const Color(0xFF1F2937);
+
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 800),
@@ -384,23 +494,23 @@ class _MyHomePageState extends State<MyHomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Text(
+              Text(
                 'Smart Recall',
-                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF1F2937)),
+                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: textColor),
               ),
               const SizedBox(height: 8),
               Text(
                 'Query your entire company memory bank using natural language.',
-                style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+                style: TextStyle(fontSize: 16, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
               ),
               const SizedBox(height: 32),
               
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: Theme.of(context).cardColor,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade200),
+                    border: Border.all(color: isDark ? Colors.grey.shade800 : Colors.grey.shade200),
                     boxShadow: [
                       BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))
                     ],
@@ -408,7 +518,6 @@ class _MyHomePageState extends State<MyHomePage> {
                   clipBehavior: Clip.antiAlias,
                   child: Column(
                     children: [
-                      // Header
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         color: const Color(0xFF5A52FF),
@@ -421,13 +530,8 @@ class _MyHomePageState extends State<MyHomePage> {
                         ),
                       ),
                       
-                      // --- LIVE CHAT BODY ---
-                      // Inside _buildSmartRecall in main.dart
-                      // ... existing UI code ...
-                      // --- LIVE CHAT BODY ---
                       Expanded(
                         child: StreamBuilder<QuerySnapshot>(
-                          // USE THE HELPER FROM DATABASE SERVICE
                           stream: DatabaseService().streamChat(), 
                           builder: (context, snapshot) {
                             if (snapshot.connectionState == ConnectionState.waiting) {
@@ -455,23 +559,22 @@ class _MyHomePageState extends State<MyHomePage> {
                           },
                         ),
                       ),
-                      // ... rest of UI ...,
                       
-                      // --- INPUT FIELD ---
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: Colors.white,
-                          border: Border(top: BorderSide(color: Colors.grey.shade200)),
+                          color: Theme.of(context).cardColor,
+                          border: Border(top: BorderSide(color: isDark ? Colors.grey.shade800 : Colors.grey.shade200)),
                         ),
                         child: TextField(
                           controller: _recallController,
                           onSubmitted: (_) => _sendRecallQuery(),
+                          style: TextStyle(color: textColor),
                           decoration: InputDecoration(
                             hintText: 'Ask company memory...',
-                            hintStyle: TextStyle(color: Colors.grey.shade400),
+                            hintStyle: TextStyle(color: Colors.grey.shade500),
                             filled: true,
-                            fillColor: const Color(0xFFF8F9FA),
+                            fillColor: isDark ? Colors.grey.shade900 : const Color(0xFFF8F9FA),
                             contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(30),
@@ -501,9 +604,9 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-
-  // --- HELPER WIDGETS ---
   Widget _buildChatBubble(String text, bool isUser) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -511,8 +614,8 @@ class _MyHomePageState extends State<MyHomePage> {
         padding: const EdgeInsets.all(16),
         constraints: const BoxConstraints(maxWidth: 500),
         decoration: BoxDecoration(
-          color: isUser ? const Color(0xFF5A52FF) : Colors.white,
-          border: isUser ? null : Border.all(color: Colors.grey.shade300),
+          color: isUser ? const Color(0xFF5A52FF) : Theme.of(context).cardColor,
+          border: isUser ? null : Border.all(color: isDark ? Colors.grey.shade700 : Colors.grey.shade300),
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(12),
             topRight: const Radius.circular(12),
@@ -523,7 +626,7 @@ class _MyHomePageState extends State<MyHomePage> {
         child: Text(
           text,
           style: TextStyle(
-            color: isUser ? Colors.white : Colors.black87,
+            color: isUser ? Colors.white : (isDark ? Colors.white : Colors.black87),
             height: 1.5,
             fontSize: 14,
           ),
@@ -532,20 +635,20 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-
-  // For the main navigation items (highlights when selected)
   Widget _buildDrawerItem(IconData icon, String title, int index) {
     bool isActive = _selectedIndex == index;
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: ListTile(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         tileColor: isActive ? const Color(0xFF5A52FF).withOpacity(0.1) : null,
-        leading: Icon(icon, color: isActive ? const Color(0xFF5A52FF) : Colors.grey.shade700),
+        leading: Icon(icon, color: isActive ? const Color(0xFF5A52FF) : (isDark ? Colors.grey.shade400 : Colors.grey.shade700)),
         title: Text(
           title,
           style: TextStyle(
-            color: isActive ? const Color(0xFF5A52FF) : Colors.grey.shade800,
+            color: isActive ? const Color(0xFF5A52FF) : (isDark ? Colors.white : Colors.grey.shade800),
             fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
           ),
         ),
@@ -554,26 +657,27 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
-  // For the bottom action items (Settings, Logout)
   Widget _buildActionItem(IconData icon, String title, {Color? color, required VoidCallback onTap}) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: ListTile(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        leading: Icon(icon, color: color ?? Colors.grey.shade700),
-        title: Text(title, style: TextStyle(color: color ?? Colors.grey.shade800, fontWeight: FontWeight.bold)),
+        leading: Icon(icon, color: color ?? (isDark ? Colors.grey.shade400 : Colors.grey.shade700)),
+        title: Text(title, style: TextStyle(color: color ?? (isDark ? Colors.white : Colors.grey.shade800), fontWeight: FontWeight.bold)),
         onTap: onTap,
       ),
     );
   }
 
   Widget _buildStatCard(IconData icon, String title, String value, Color bgColor, Color iconColor) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: isDark ? Colors.grey.shade800 : Colors.grey.shade200),
       ),
       child: Row(
         children: [
@@ -588,7 +692,7 @@ class _MyHomePageState extends State<MyHomePage> {
             children: [
               Text(title, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade500)),
               const SizedBox(height: 4),
-              Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87)),
+              Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
             ],
           )
         ],
@@ -596,7 +700,48 @@ class _MyHomePageState extends State<MyHomePage> {
     );
   }
 
+  Widget _buildSearchBar() {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(color: isDark ? Colors.grey.shade800 : Colors.grey.shade300),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 4))
+        ]
+      ),
+      child: TextField(
+        controller: _searchController,
+        style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+        onChanged: (value) {
+          setState(() {
+            _searchQuery = value.toLowerCase(); 
+          });
+        },
+        decoration: InputDecoration(
+          hintText: 'Search memories, tags, or AI summaries...',
+          hintStyle: TextStyle(color: isDark ? Colors.grey.shade600 : Colors.grey.shade400),
+          prefixIcon: const Icon(Icons.search, color: Color(0xFF5A52FF)),
+          suffixIcon: _searchQuery.isNotEmpty 
+            ? IconButton(
+                icon: const Icon(Icons.cancel, color: Colors.grey),
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() => _searchQuery = '');
+                },
+              ) 
+            : null, 
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        ),
+      ),
+    );
+  }
+
   Widget _buildMemoryCard(BuildContext context, MemoryNode node) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
     String dateStr = 'Just now';
     if (node.timestamp != null) {
       dateStr = DateFormat('MM/dd/yyyy').format(node.timestamp!);
@@ -604,9 +749,9 @@ class _MyHomePageState extends State<MyHomePage> {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: isDark ? Colors.grey.shade800 : Colors.grey.shade200),
         boxShadow: [
           BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 4))
         ],
@@ -626,15 +771,10 @@ class _MyHomePageState extends State<MyHomePage> {
                   children: [
                     Expanded(
                       child: Container(
-                        color: Colors.grey.shade200,
+                        color: isDark ? Colors.grey.shade900 : Colors.grey.shade200,
                         child: node.fileUrl != null && node.fileUrl!.isNotEmpty
-                            ? IgnorePointer(
-                                child: SfPdfViewer.network(
-                                  node.fileUrl!,
-                                  canShowScrollHead: false,
-                                  canShowScrollStatus: false,
-                                  canShowPaginationDialog: false,
-                                ),
+                            ? AbsorbPointer(
+                                child: WebPdfThumbnail(pdfUrl: node.fileUrl!),
                               )
                             : Center(
                                 child: Column(
@@ -659,7 +799,7 @@ class _MyHomePageState extends State<MyHomePage> {
                               Expanded(
                                 child: Text(
                                   node.title,
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark ? Colors.white : Colors.black87),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -692,12 +832,12 @@ class _MyHomePageState extends State<MyHomePage> {
             ),
           ),
           
-          const Divider(height: 1, thickness: 1, color: Color(0xFFEEEEEE)),
+          Divider(height: 1, thickness: 1, color: isDark ? Colors.grey.shade800 : const Color(0xFFEEEEEE)),
           
           Expanded(
             flex: 1,
             child: Material(
-              color: const Color(0xFFF8F9FA), 
+              color: isDark ? const Color(0xFF1A1A1A) : const Color(0xFFF8F9FA), 
               child: InkWell(
                 onTap: () => _showNodeDetails(context, node), 
                 child: Padding(
@@ -711,14 +851,14 @@ class _MyHomePageState extends State<MyHomePage> {
                           const SizedBox(width: 6),
                           Text(
                             'AI Summary',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isDark ? Colors.grey.shade300 : Colors.grey.shade800),
                           ),
                         ],
                       ),
                       const SizedBox(height: 6),
                       Text(
                         node.summary.isEmpty ? "No summary available." : node.summary,
-                        style: TextStyle(fontSize: 13, color: Colors.grey.shade600, height: 1.4),
+                        style: TextStyle(fontSize: 13, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600, height: 1.4),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -734,13 +874,74 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Widget _buildTag(String label) {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: const Color(0xFFEEF2FF), borderRadius: BorderRadius.circular(4)),
+      decoration: BoxDecoration(color: isDark ? const Color(0xFF2C2C2C) : const Color(0xFFEEF2FF), borderRadius: BorderRadius.circular(4)),
       child: Text(
         label,
         style: const TextStyle(color: Color(0xFF5A52FF), fontSize: 10, fontWeight: FontWeight.w600),
       ),
     );
+  }
+
+  Widget _buildShimmerCard() {
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isDark ? Colors.grey.shade800 : Colors.grey.shade200),
+      ),
+      child: Shimmer.fromColors(
+        baseColor: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
+        highlightColor: isDark ? Colors.grey.shade700 : Colors.grey.shade50,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              flex: 3,
+              child: Container(
+                color: Theme.of(context).cardColor,
+                margin: const EdgeInsets.all(16),
+              ),
+            ),
+            const Divider(height: 1, thickness: 1),
+            Expanded(
+              flex: 1,
+              child: Container(
+                color: Theme.of(context).cardColor,
+                margin: const EdgeInsets.all(16),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class WebPdfThumbnail extends StatelessWidget {
+  final String pdfUrl;
+  const WebPdfThumbnail({super.key, required this.pdfUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    final safeUrl = Uri.encodeComponent(pdfUrl);
+
+    ui_web.platformViewRegistry.registerViewFactory(
+      pdfUrl,
+      (int viewId) {
+        final iframe = web.HTMLIFrameElement()
+          ..src = 'https://docs.google.com/gview?embedded=true&url=$safeUrl' 
+          ..style.border = 'none'
+          ..style.pointerEvents = 'none' 
+          ..style.width = '100%'
+          ..style.height = '100%';
+        return iframe;
+      }
+    );
+
+    return HtmlElementView(viewType: pdfUrl);
   }
 }
