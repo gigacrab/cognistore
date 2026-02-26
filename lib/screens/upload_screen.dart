@@ -6,18 +6,11 @@ import 'package:cognistore/models/memory_node.dart';
 import 'package:firebase_auth/firebase_auth.dart';  
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
-
-// 🔴 IF THIS LINE IS RED: You need to run 'flutter pub add dotted_border' in the terminal
 import 'package:dotted_border/dotted_border.dart';
 
-// asynchronous function that'll return a String in the future
-// this dart function can call backend cloud functions over HTTPS
 Future<String> getAISummary(String extractedText) async {
-  final callable =
-      FirebaseFunctions.instance.httpsCallable('generateSummary');
-
+  final callable = FirebaseFunctions.instance.httpsCallable('generateSummary');
   final result = await callable.call(extractedText);
-
   return result.data;
 }
 
@@ -34,125 +27,102 @@ class _UploadScreenState extends State<UploadScreen>{
   String _statusMessage = "";
 
   final TextEditingController _textNoteController = TextEditingController();
+  final TextEditingController _tagController = TextEditingController();
+  final List<String> _selectedTags = [];
+
+  UploadTask? _uploadTask;
+  bool _isCancelled = false;
+
+  void _cancelProcess() {
+    setState(() {
+      _isCancelled = true;
+      _isUploading = false;
+      _statusMessage = "Upload cancelled.";
+    });
+    _uploadTask?.cancel();
+  }
   
   Future<void> selectFile() async{
     final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pdf'],
-      withData: true,
+      type: FileType.custom, allowedExtensions: ['pdf'], withData: true,
     );
-
-    if(result != null){
-      setState(()=> _pickedFile = result.files.first);
-    }
+    if(result != null) setState(()=> _pickedFile = result.files.first);
   }
 
   Future<void> uploadFile() async {
     if (_pickedFile == null) return;
-
     setState(() {
-      _isUploading = true;
-      _statusMessage = "Uploading document to secure vault..."; // Update status
+      _isUploading = true; _isCancelled = false;
+      _statusMessage = "Uploading document to secure vault..."; 
     });
 
     try{
-      // Get mandatory uid
       final uid = FirebaseAuth.instance.currentUser!.uid;
+      final ref = FirebaseStorage.instance.ref().child("pdfs").child(uid).child('${DateTime.now().millisecondsSinceEpoch}_${_pickedFile!.name}');
 
-      // Upload under uid folder, with timestamp in case there are duplicate files
-      final ref = FirebaseStorage.instance
-        .ref()
-        .child("pdfs")
-        .child(uid)
-        .child('${DateTime.now().millisecondsSinceEpoch}_${_pickedFile!.name}');
+      _uploadTask = ref.putData(_pickedFile!.bytes!, SettableMetadata(contentType: 'application/pdf', contentDisposition: 'inline; filename="${_pickedFile!.name}"'));
+      await _uploadTask; 
+      if (_isCancelled) return; 
 
-      // --- UPDATED UPLOAD COMMAND ---
-      await ref.putData(
-        _pickedFile!.bytes!,
-        SettableMetadata(
-          contentType: 'application/pdf',
-          contentDisposition: 'inline; filename="${_pickedFile!.name}"', // THIS STOPS THE AUTO-DOWNLOAD!
-        ),
-      );
       final url = await ref.getDownloadURL();
       String userDescription = _textNoteController.text;
 
       setState(() => _statusMessage = "Extracting raw text from PDF...");
-
-      // Extract Text from PDF Bytes
       String extractedText = '';
       try {
         final PdfDocument document = PdfDocument(inputBytes: _pickedFile!.bytes!);
         extractedText = PdfTextExtractor(document).extractText();
         document.dispose();
       } catch (e) {
-        debugPrint("Could not extract text: $e");
         extractedText = "Text extraction failed or document is an image-based PDF.";
       }
+      if (_isCancelled) return;
 
       setState(() => _statusMessage = "AI is generating a smart summary...");
-
-      // Call the Gemini AI API for Summary
       String aiSummary = userDescription; 
-      
       if (extractedText.trim().isNotEmpty) {
-        try {
-          aiSummary = await getAISummary(extractedText);
-          debugPrint("It's a success!");
-        } catch (e) {
-          debugPrint("Error calling AI summary: $e");
-        }
+        try { aiSummary = await getAISummary(extractedText); } catch (e) { debugPrint("AI error: $e"); }
       } 
+      if (_isCancelled) return; 
+
+      // Apply manual tags
+      List<String> finalTags = List.from(_selectedTags);
+      if (finalTags.isEmpty) finalTags.add('New Upload');
 
       setState(() => _statusMessage = "Saving to Memory Bank...");
-
-      // Create the memory node object with real AI data
       MemoryNode newNode = MemoryNode(
-        id:'', 
-        title: _pickedFile!.name,
-        type: 'decision', 
-        summary: aiSummary, 
-        fullContent: extractedText, 
-        tags:['New Upload'],
-        metadata: {'fileSize': _pickedFile!.size},
-        fileUrl: url,
+        id:'', title: _pickedFile!.name, type: 'decision', 
+        summary: aiSummary, fullContent: extractedText, 
+        tags: finalTags, metadata: {'fileSize': _pickedFile!.size}, fileUrl: url,
       );
 
-      // Save to Firestore Database
       await DatabaseService().createNode(newNode);
+      if (_isCancelled) return; 
 
       if(mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Upload & AI Summary Complete!")),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Upload Complete!")));
         Navigator.pop(context);
       }
-
     } catch(e){
-      setState(() {
-        _statusMessage = "Upload fail: ${e.toString()}";
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
-      }
+      if (e.toString().contains("canceled")) return;
+      setState(() => _statusMessage = "Upload fail: ${e.toString()}");
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     } finally {
-      if (mounted) {
-        setState((){
-          _isUploading = false;
-        });
-      }
+      if (mounted && !_isCancelled) setState(() => _isUploading = false);
+      _uploadTask = null; 
     }
   }
 
   @override
   Widget build(BuildContext context){
+    bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color cardColor = Theme.of(context).cardColor;
+    Color textColor = isDark ? Colors.white : const Color(0xFF1F2937);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Add to Knowledge Bank", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        elevation: 1,
+        title: Text("Add to Knowledge Bank", style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
+        backgroundColor: cardColor, elevation: 1, iconTheme: IconThemeData(color: textColor),
       ),
       body: Center(
         child: SingleChildScrollView(
@@ -163,64 +133,24 @@ class _UploadScreenState extends State<UploadScreen>{
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    "Upload Document",
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1F2937))
-                  ),
+                  Text("Upload Document", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: textColor)),
                   const SizedBox(height: 8),
-                  Text(
-                    "Upload a PDF. Our AI will automatically extract the text and generate a summary for your smart recall.",
-                    style: TextStyle(fontSize: 14, color: Colors.grey.shade600)
-                  ),
+                  Text("Upload a PDF to extract text and generate an AI summary.", style: TextStyle(fontSize: 14, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600)),
                   const SizedBox(height: 32),
                   
-                  // --- SLEEK DOTTED DROPZONE ---
                   GestureDetector(
-                    onTap: _isUploading ? null : selectFile, // Disable clicking while uploading
+                    onTap: _isUploading ? null : selectFile, 
                     child: DottedBorder(
-                      
-                      // 🟢 UPDATED FOR DOTTED_BORDER 3.1.0 🟢
-                      options: RoundedRectDottedBorderOptions(
-                        radius: const Radius.circular(16),
-                        dashPattern: const [8, 4],
-                        color: const Color(0xFF5A52FF).withOpacity(0.5),
-                        strokeWidth: 2,
-                      ),
-                      
+                      options: RoundedRectDottedBorderOptions(radius: const Radius.circular(16), dashPattern: const [8, 4], color: const Color(0xFF5A52FF).withOpacity(0.5), strokeWidth: 2),
                       child: Container(
-                        height: 200,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF5A52FF).withOpacity(0.05),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
+                        height: 200, width: double.infinity,
+                        decoration: BoxDecoration(color: isDark ? const Color(0xFF2C2C2C) : const Color(0xFF5A52FF).withOpacity(0.05), borderRadius: BorderRadius.circular(16)),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(
-                              _pickedFile == null ? Icons.cloud_upload_outlined : Icons.picture_as_pdf, 
-                              size: 64, 
-                              color: const Color(0xFF5A52FF)
-                            ),
+                            Icon(_pickedFile == null ? Icons.cloud_upload_outlined : Icons.picture_as_pdf, size: 64, color: const Color(0xFF5A52FF)),
                             const SizedBox(height: 16),
-                            Text(
-                              _pickedFile == null 
-                                ? "Click to browse for a PDF" 
-                                : _pickedFile!.name,
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold, 
-                                fontSize: 16,
-                                color: _pickedFile == null ? Colors.grey.shade700 : const Color(0xFF5A52FF)
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                            if (_pickedFile != null) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                "Ready to process", 
-                                style: TextStyle(color: Colors.grey.shade600, fontSize: 12)
-                              )
-                            ]
+                            Text(_pickedFile == null ? "Click to browse for a PDF" : _pickedFile!.name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: _pickedFile == null ? Colors.grey : const Color(0xFF5A52FF)), textAlign: TextAlign.center),
                           ],
                         ),
                       ),
@@ -228,57 +158,62 @@ class _UploadScreenState extends State<UploadScreen>{
                   ),
                   
                   const SizedBox(height: 32),
-                  const Text(
-                    "Additional Context (Optional)",
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
+                  Text("Smart Tags", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor)),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _tagController, enabled: !_isUploading, style: TextStyle(color: textColor),
+                    decoration: InputDecoration(
+                      hintText: "Type a tag and press Enter...", hintStyle: TextStyle(color: isDark ? Colors.grey.shade600 : Colors.grey.shade400),
+                      filled: true, fillColor: cardColor, prefixIcon: const Icon(Icons.sell_outlined, color: Colors.grey),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isDark ? Colors.grey.shade700 : Colors.grey.shade300)),
+                    ),
+                    onSubmitted: (value) {
+                      String newTag = value.trim();
+                      if (newTag.isNotEmpty && !_selectedTags.contains(newTag)) {
+                        setState(() { _selectedTags.add(newTag); _tagController.clear(); });
+                      }
+                    },
                   ),
+                  
+                  if (_selectedTags.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8, runSpacing: 8,
+                      children: _selectedTags.map((tag) => Chip(
+                        label: Text(tag, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF5A52FF))),
+                        backgroundColor: isDark ? const Color(0xFF2C2C2C) : const Color(0xFFEEF2FF),
+                        deleteIcon: const Icon(Icons.close, size: 16, color: Color(0xFF5A52FF)),
+                        onDeleted: _isUploading ? null : () => setState(() => _selectedTags.remove(tag)),
+                        side: BorderSide.none, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      )).toList(),
+                    ),
+                  ],
+
+                  const SizedBox(height: 32),
+                  Text("Additional Context (Optional)", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor)),
                   const SizedBox(height: 12),
                   TextField(
-                    controller: _textNoteController,
-                    maxLines: 4,
-                    enabled: !_isUploading,
+                    controller: _textNoteController, maxLines: 3, enabled: !_isUploading, style: TextStyle(color: textColor),
                     decoration: InputDecoration(
-                      hintText: "Add any specific notes or context the AI should know...",
-                      hintStyle: TextStyle(color: Colors.grey.shade400),
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: Color(0xFF5A52FF), width: 2),
-                      ),
+                      hintText: "Add any specific notes or context...",
+                      filled: true, fillColor: cardColor,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isDark ? Colors.grey.shade700 : Colors.grey.shade300)),
                     ),
                   ),
                   
                   const SizedBox(height: 40),
                   
-                  // --- DYNAMIC LOADING BAR OR UPLOAD BUTTON ---
                   if (_isUploading)
                     Container(
                       padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.shade200),
-                      ),
+                      decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(12), border: Border.all(color: isDark ? Colors.grey.shade700 : Colors.grey.shade300)),
                       child: Column(
                         children: [
-                          const LinearProgressIndicator(
-                            color: Color(0xFF5A52FF),
-                            backgroundColor: Color(0xFFEEF2FF),
-                          ),
+                          const LinearProgressIndicator(color: Color(0xFF5A52FF), backgroundColor: Color(0xFFEEF2FF)),
                           const SizedBox(height: 16),
-                          Text(
-                            _statusMessage, 
-                            style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF5A52FF))
-                          ),
+                          Text(_statusMessage, style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF5A52FF))),
+                          const SizedBox(height: 12),
+                          TextButton.icon(onPressed: _cancelProcess, icon: const Icon(Icons.cancel_outlined, color: Colors.redAccent), label: const Text("Stop Processing", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)))
                         ],
                       ),
                     )
@@ -289,26 +224,7 @@ class _UploadScreenState extends State<UploadScreen>{
                         onPressed: _pickedFile == null ? null : uploadFile,
                         icon: const Icon(Icons.auto_awesome, color: Colors.white),
                         label: const Text("Process & Save Memory", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 20),
-                          backgroundColor: const Color(0xFF5A52FF),
-                          disabledBackgroundColor: Colors.grey.shade300,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                      ),
-                    ),
-
-                  const SizedBox(height: 16),
-                  
-                  if (!_isUploading)
-                    SizedBox(
-                      width: double.infinity,
-                      child: TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 20),
-                        ),
-                        child: const Text('Cancel & Return', style: TextStyle(color: Colors.grey)),
+                        style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 20), backgroundColor: const Color(0xFF5A52FF), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                       ),
                     ),
                 ],

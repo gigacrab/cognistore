@@ -18,9 +18,13 @@ class DatabaseService {
     DocumentReference doc = await _nodeRef().add(node.toMap());
     return doc.id;
   }
-  // --- ADD THIS TO DELETE NODES ---
+  //Delete Notes
   Future<void> deleteNode(String nodeId) async {
     await _nodeRef().doc(nodeId).delete();
+  }
+  //Edit Tags
+  Future<void> updateNode(MemoryNode node) async {
+    await _nodeRef().doc(node.id).update(node.toMap());
   }
 
   CollectionReference _chatRef() => 
