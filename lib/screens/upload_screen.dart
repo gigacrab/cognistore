@@ -78,12 +78,25 @@ class _UploadScreenState extends State<UploadScreen>{
       }
       if (_isCancelled) return;
 
+      // 3. AI Summary
       setState(() => _statusMessage = "AI is generating a smart summary...");
-      String aiSummary = userDescription; 
+      String aiSummary = ""; 
+      
       if (extractedText.trim().isNotEmpty) {
         try { aiSummary = await getAISummary(extractedText); } catch (e) { debugPrint("AI error: $e"); }
       } 
       if (_isCancelled) return; 
+
+      // --- THE FIX: COMBINE AI SUMMARY WITH YOUR NOTES ---
+      if (userDescription.isNotEmpty) {
+        if (aiSummary.isNotEmpty) {
+          // If both exist, stack them nicely!
+          aiSummary = "$aiSummary\n\n📝 MY NOTES:\n$userDescription";
+        } else {
+          // If AI failed, just use your notes
+          aiSummary = userDescription;
+        }
+      }
 
       // Apply manual tags
       List<String> finalTags = List.from(_selectedTags);
