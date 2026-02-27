@@ -11,6 +11,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:web/web.dart' as web; 
 import 'dart:ui_web' as ui_web;
 import 'package:shimmer/shimmer.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
 
@@ -174,25 +175,31 @@ class _MyHomePageState extends State<MyHomePage> {
 
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true,
+      isScrollControlled: true, 
       backgroundColor: Colors.transparent,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.6, maxChildSize: 0.9,
-        builder: (_, controller) => Container(
-          decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: const BorderRadius.vertical(top: Radius.circular(20))),
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(child: Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(10)))),
-              const SizedBox(height: 20),
-              Expanded(
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.85, // Fixed 85% height
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor, 
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20))
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(10))),
+            const SizedBox(height: 12),
+            
+            Expanded(
+              // --- THE SCROLL BUG FIX: SelectionArea + ListView ---
+              // This lets you copy text without breaking your scroll wheel!
+              child: SelectionArea(
                 child: ListView(
-                  controller: controller,
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
                   children: [
-                    SelectableText(node.title, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: textColor)),
-                    const SizedBox(height: 12),
+                    Text(node.title, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: textColor)),
+                    const SizedBox(height: 16),
                     
+                    // --- 1. TAGS ---
                     StatefulBuilder(
                       builder: (context, setModalState) {
                         return Wrap(
@@ -259,16 +266,120 @@ class _MyHomePageState extends State<MyHomePage> {
                       }
                     ),
                     
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 32),
+                    
+                    // --- 2. CUSTOM NOTES UI ---
+                    StatefulBuilder(
+                      builder: (context, setNotesState) {
+                        // Safe check for older files without metadata
+                        String currentNotes = '';
+                        if (node.metadata.containsKey('userNotes')) {
+                          currentNotes = node.metadata['userNotes']?.toString() ?? '';
+                        }
+                        bool hasNotes = currentNotes.trim().isNotEmpty;
+
+                        return Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: isDark ? Colors.orange.withOpacity(0.05) : Colors.orange.shade50,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.orange.withOpacity(0.3), width: 2),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Wrap(
+                                alignment: WrapAlignment.spaceBetween,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.edit_note, color: Colors.orange, size: 24),
+                                      const SizedBox(width: 8),
+                                      const Text("My Context & Notes", style: TextStyle(color: Colors.orange, fontSize: 18, fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
+                                  TextButton.icon(
+                                    onPressed: () {
+                                      TextEditingController notesCtrl = TextEditingController(text: currentNotes);
+                                      showDialog(
+                                        context: context,
+                                        builder: (ctx) => AlertDialog(
+                                          backgroundColor: Theme.of(context).cardColor,
+                                          title: Text(hasNotes ? 'Edit Notes' : 'Add Notes', style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
+                                          content: SizedBox(
+                                            width: 500,
+                                            child: TextField(
+                                              controller: notesCtrl,
+                                              maxLines: 6,
+                                              style: TextStyle(color: textColor),
+                                              decoration: InputDecoration(
+                                                hintText: 'Type your notes, decisions, or trade-offs here...',
+                                                hintStyle: TextStyle(color: Colors.grey.shade500),
+                                                filled: true,
+                                                fillColor: isDark ? Colors.grey.shade900 : const Color(0xFFF8F9FA),
+                                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isDark ? Colors.grey.shade700 : Colors.grey.shade300)),
+                                              ),
+                                            ),
+                                          ),
+                                          actions: [
+                                            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
+                                            ElevatedButton(
+                                              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                                              onPressed: () async {
+                                                // Create a safe, mutable copy of the map to prevent Firebase crash
+                                                Map<String, dynamic> mutableMetadata = Map<String, dynamic>.from(node.metadata);
+                                                mutableMetadata['userNotes'] = notesCtrl.text.trim();
+                                                
+                                                node.metadata.clear();
+                                                node.metadata.addAll(mutableMetadata);
+                                                
+                                                setNotesState(() {}); 
+                                                await DatabaseService().updateNode(node); 
+                                                if (ctx.mounted) Navigator.pop(ctx);
+                                              }, 
+                                              child: const Text('Save Notes', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+                                            )
+                                          ],
+                                        )
+                                      );
+                                    },
+                                    icon: Icon(hasNotes ? Icons.edit : Icons.add, color: Colors.orange, size: 18),
+                                    label: Text(hasNotes ? "Edit" : "Add Note", style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+                                    style: TextButton.styleFrom(backgroundColor: Colors.orange.withOpacity(0.1)),
+                                  ),
+                                ],
+                              ),
+                              if (hasNotes) ...[
+                                const SizedBox(height: 12),
+                                const Divider(color: Colors.orange),
+                                const SizedBox(height: 12),
+                                Text(
+                                  currentNotes,
+                                  style: TextStyle(height: 1.5, fontSize: 15, color: textColor),
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      }
+                    ),
+
+                    const SizedBox(height: 32),
+
+                    // --- 3. AI SUMMARY ---
                     const Text("AI Summary", style: TextStyle(color: Color(0xFF5A52FF), fontSize: 18, fontWeight: FontWeight.bold)),
                     const Divider(),
                     const SizedBox(height: 8),
-                    SelectableText(
+                    Text(
                       node.summary.isEmpty ? "No summary available." : node.summary,
                       style: TextStyle(height: 1.5, fontSize: 16, fontWeight: FontWeight.w500, color: textColor),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 32),
 
+                    // --- 4. ORIGINAL DOCUMENT VIEWER ---
                     const Text("Original Document", style: TextStyle(color: Color(0xFF5A52FF), fontSize: 18, fontWeight: FontWeight.bold)),
                     const Divider(),
                     const SizedBox(height: 8),
@@ -291,22 +402,23 @@ class _MyHomePageState extends State<MyHomePage> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 32),
 
+                    // --- 5. FULL TEXT EXTRACT ---
                     const Text("Full Extracted Document", style: TextStyle(color: Colors.grey, fontSize: 14, fontWeight: FontWeight.bold)),
                     const Divider(),
                     const SizedBox(height: 8),
-                    SelectableText(
+                    Text(
                       node.fullContent.isEmpty ? "No detailed content extracted yet." : node.fullContent,
                       style: TextStyle(height: 1.5, fontSize: 14, color: subTextColor),
                     ),
                     const SizedBox(height: 20),
-                    if (node.fileUrl != null) SelectableText("Source: ${node.fileUrl}", style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    if (node.fileUrl != null) Text("Source: ${node.fileUrl}", style: const TextStyle(fontSize: 12, color: Colors.grey)),
                   ],
                 ),
-              )
-            ],
-          ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -654,16 +766,40 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Widget _buildChatBubble(String text, bool isUser) {
     bool isDark = Theme.of(context).brightness == Brightness.dark;
+    Color textColor = isUser ? Colors.white : (isDark ? Colors.white : Colors.black87);
+
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 8), padding: const EdgeInsets.all(16), constraints: const BoxConstraints(maxWidth: 500),
+        margin: const EdgeInsets.symmetric(vertical: 8), 
+        padding: const EdgeInsets.all(16), 
+        constraints: const BoxConstraints(maxWidth: 500),
         decoration: BoxDecoration(
           color: isUser ? const Color(0xFF5A52FF) : Theme.of(context).cardColor,
           border: isUser ? null : Border.all(color: isDark ? Colors.grey.shade700 : Colors.grey.shade300),
-          borderRadius: BorderRadius.only(topLeft: const Radius.circular(12), topRight: const Radius.circular(12), bottomLeft: isUser ? const Radius.circular(12) : Radius.zero, bottomRight: isUser ? Radius.zero : const Radius.circular(12)),
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(12), 
+            topRight: const Radius.circular(12), 
+            bottomLeft: isUser ? const Radius.circular(12) : Radius.zero, 
+            bottomRight: isUser ? Radius.zero : const Radius.circular(12)
+          ),
         ),
-        child: Text(text, style: TextStyle(color: isUser ? Colors.white : (isDark ? Colors.white : Colors.black87), height: 1.5, fontSize: 14)),
+        // --- UPDATED: Now uses Markdown instead of raw Text! ---
+        child: MarkdownBody(
+          data: text,
+          selectable: true, // Lets users copy/paste the AI's answers!
+          styleSheet: MarkdownStyleSheet(
+            p: TextStyle(color: textColor, height: 1.5, fontSize: 14),
+            strong: TextStyle(color: textColor, fontWeight: FontWeight.bold),
+            em: TextStyle(color: textColor, fontStyle: FontStyle.italic),
+            listBullet: TextStyle(color: textColor),
+            code: TextStyle(
+              backgroundColor: isDark ? Colors.black45 : Colors.grey.shade200,
+              color: isDark ? Colors.greenAccent : Colors.redAccent,
+              fontFamily: 'monospace',
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -772,7 +908,8 @@ class _MyHomePageState extends State<MyHomePage> {
                             ],
                           ),
                           const SizedBox(height: 12),
-                          Wrap(spacing: 8, runSpacing: 8, children: node.tags.isEmpty ? [_buildTag('New Upload')] : node.tags.map((tag) => _buildTag(tag)).toList()),
+                          // If there are no tags, it now shows nothing instead of a fake tag!
+                          Wrap(spacing: 8, runSpacing: 8, children: node.tags.map((tag) => _buildTag(tag)).toList()),
                         ],
                       ),
                     ),

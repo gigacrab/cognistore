@@ -51,78 +51,89 @@ class _UploadScreenState extends State<UploadScreen>{
 
   Future<void> uploadFile() async {
     if (_pickedFile == null) return;
+
     setState(() {
-      _isUploading = true; _isCancelled = false;
-      _statusMessage = "Uploading document to secure vault..."; 
+      _isUploading = true;
+      _statusMessage = "Uploading document to secure vault..."; // Update status
     });
 
     try{
       final uid = FirebaseAuth.instance.currentUser!.uid;
-      final ref = FirebaseStorage.instance.ref().child("pdfs").child(uid).child('${DateTime.now().millisecondsSinceEpoch}_${_pickedFile!.name}');
+      final ref = FirebaseStorage.instance
+        .ref()
+        .child("pdfs")
+        .child(uid)
+        .child('${DateTime.now().millisecondsSinceEpoch}_${_pickedFile!.name}');
 
-      _uploadTask = ref.putData(_pickedFile!.bytes!, SettableMetadata(contentType: 'application/pdf', contentDisposition: 'inline; filename="${_pickedFile!.name}"'));
-      await _uploadTask; 
-      if (_isCancelled) return; 
-
+      await ref.putData(
+        _pickedFile!.bytes!,
+        SettableMetadata(
+          contentType: 'application/pdf',
+          contentDisposition: 'inline; filename="${_pickedFile!.name}"', 
+        ),
+      );
       final url = await ref.getDownloadURL();
       String userDescription = _textNoteController.text;
 
       setState(() => _statusMessage = "Extracting raw text from PDF...");
+
       String extractedText = '';
       try {
         final PdfDocument document = PdfDocument(inputBytes: _pickedFile!.bytes!);
         extractedText = PdfTextExtractor(document).extractText();
         document.dispose();
       } catch (e) {
+        debugPrint("Could not extract text: $e");
         extractedText = "Text extraction failed or document is an image-based PDF.";
       }
-      if (_isCancelled) return;
 
-      // 3. AI Summary
       setState(() => _statusMessage = "AI is generating a smart summary...");
+
+      // Call the Gemini AI API for Summary
       String aiSummary = ""; 
       
       if (extractedText.trim().isNotEmpty) {
-        try { aiSummary = await getAISummary(extractedText); } catch (e) { debugPrint("AI error: $e"); }
-      } 
-      if (_isCancelled) return; 
-
-      // --- THE FIX: COMBINE AI SUMMARY WITH YOUR NOTES ---
-      if (userDescription.isNotEmpty) {
-        if (aiSummary.isNotEmpty) {
-          // If both exist, stack them nicely!
-          aiSummary = "$aiSummary\n\n📝 MY NOTES:\n$userDescription";
-        } else {
-          // If AI failed, just use your notes
-          aiSummary = userDescription;
+        try {
+          aiSummary = await getAISummary(extractedText);
+        } catch (e) {
+          debugPrint("Error calling AI summary: $e");
         }
-      }
+      } 
+
+      setState(() => _statusMessage = "Saving to Memory Bank...");
 
       // Apply manual tags
       List<String> finalTags = List.from(_selectedTags);
       if (finalTags.isEmpty) finalTags.add('New Upload');
 
-      setState(() => _statusMessage = "Saving to Memory Bank...");
+      // Create the memory node object
       MemoryNode newNode = MemoryNode(
-        id:'', title: _pickedFile!.name, type: 'decision', 
-        summary: aiSummary, fullContent: extractedText, 
-        tags: finalTags, metadata: {'fileSize': _pickedFile!.size}, fileUrl: url,
+        id:'', 
+        title: _pickedFile!.name,
+        type: 'decision', 
+        summary: aiSummary, // <--- Just the clean AI text
+        fullContent: extractedText, 
+        tags: finalTags,
+        metadata: {
+          'fileSize': _pickedFile!.size,
+          'userNotes': userDescription, // <--- SAVED CLEANLY HERE IN METADATA!
+        },
+        fileUrl: url,
       );
 
+      // Save to Firestore Database
       await DatabaseService().createNode(newNode);
-      if (_isCancelled) return; 
 
       if(mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Upload Complete!")));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Upload & AI Summary Complete!")));
         Navigator.pop(context);
       }
+
     } catch(e){
-      if (e.toString().contains("canceled")) return;
       setState(() => _statusMessage = "Upload fail: ${e.toString()}");
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
     } finally {
-      if (mounted && !_isCancelled) setState(() => _isUploading = false);
-      _uploadTask = null; 
+      if (mounted) setState(() => _isUploading = false);
     }
   }
 
