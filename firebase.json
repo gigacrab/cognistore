@@ -35,7 +35,7 @@
     }
   ],
   "hosting": {
-    "public": "dist",
+    "public": "build/web",
     "site": "thecognistore",
     "ignore": [
       "firebase.json",
