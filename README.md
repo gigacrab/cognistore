@@ -39,15 +39,3 @@ Before starting, ensure you have the following installed:
 * **Google Gemini API Key**
 
 ---
-
-## 🚀 Setup & Installation
-
-### 1. Firebase Project Setup
-1. Create a project in the [Firebase Console](https://console.firebase.google.com/).
-2. Enable **Authentication** (Email/Password), **Cloud Firestore**, and **Cloud Storage**.
-3. Upgrade to the **Blaze Plan** (required for Cloud Functions).
-
-### 2. Configure Flutter
-1. Initialize Firebase in your project root:
-   ```bash
-   flutterfire configure
