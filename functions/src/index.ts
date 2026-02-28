@@ -18,7 +18,7 @@ const ai = genkit({
 
 setGlobalOptions({
     maxInstances: 10,
-    region: "asia-southeast1",
+    region: "us-central1",
     memory: "1GiB",
     timeoutSeconds: 120
 });
@@ -74,23 +74,66 @@ function pickTopChunks(queryText: string, chunks: any[], k: number) {
 
 export const onNodeCreated = onDocumentCreated({
     document: "users/{userId}/nodes/{nodeId}",
+    secrets: [apiKey]
 }, async (event) => {
     const data = event.data?.data();
     if (!data || !data.fullContent) return; 
 
     try {
-        const db = admin.firestore();
-        const chunks = chunkTextSafe(data.fullContent, 1200, 200);
-        const batch = db.batch();
+      const db = admin.firestore();
+      const nodeRef = event.data!.ref;
 
-        chunks.forEach((text, i) => {
-            const ref = event.data!.ref.collection("chunks").doc();
-            batch.set(ref, { text, createdAt: admin.firestore.FieldValue.serverTimestamp(), idx: i });
+      console.log("📄 Node created. Generating chunks + summary...");
+
+      // =========================
+      // 1️⃣ Generate Summary
+      // =========================
+      let summary = "";
+
+      if (data.fullContent.trim().length > 20) {
+        const result = await ai.generate({
+          model: googleAI.model("gemini-2.5-flash"),
+          prompt: `
+You are a highly intelligent corporate assistant.
+Provide a concise 2-sentence summary of the key decisions, trade-offs, or insights.
+
+Document:
+${data.fullContent}
+          `,
         });
 
-        await batch.commit();
+        summary = result.text || "";
+      }
+
+      // =========================
+      // 2️⃣ Chunk Text
+      // =========================
+      const chunks = chunkTextSafe(data.fullContent, 1200, 200);
+      const batch = db.batch();
+
+      chunks.forEach((text, i) => {
+        const ref = nodeRef.collection("chunks").doc();
+        batch.set(ref, {
+          text,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          idx: i,
+        });
+      });
+
+      // =========================
+      // 3️⃣ Update Node With Summary
+      // =========================
+      batch.update(nodeRef, {
+        summary,
+        processedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      await batch.commit();
+
+      console.log("✅ Summary + chunks created!");
+
     } catch (err) {
-        console.error("Chunk Creation Error:", err);
+      console.error("🚨 onNodeCreated ERROR:", err);
     }
 });
 

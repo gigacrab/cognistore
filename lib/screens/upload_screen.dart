@@ -7,9 +7,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:dotted_border/dotted_border.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 Future<String> getAISummary(String extractedText) async {
-  final callable = FirebaseFunctions.instance.httpsCallable('generateSummary');
+  final callable = FirebaseFunctions.instanceFor(region: 'us-central1').httpsCallable('generateSummary');
   final result = await callable.call(extractedText);
   return result.data;
 }
@@ -87,19 +88,6 @@ class _UploadScreenState extends State<UploadScreen>{
         extractedText = "Text extraction failed or document is an image-based PDF.";
       }
 
-      setState(() => _statusMessage = "AI is generating a smart summary...");
-
-      // Call the Gemini AI API for Summary
-      String aiSummary = ""; 
-      
-      if (extractedText.trim().isNotEmpty) {
-        try {
-          aiSummary = await getAISummary(extractedText);
-        } catch (e) {
-          debugPrint("Error calling AI summary: $e");
-        }
-      } 
-
       setState(() => _statusMessage = "Saving to Memory Bank...");
 
       // Apply manual tags
@@ -111,7 +99,7 @@ class _UploadScreenState extends State<UploadScreen>{
         id:'', 
         title: _pickedFile!.name,
         type: 'decision', 
-        summary: aiSummary, // <--- Just the clean AI text
+        summary: '', // <--- Just the clean AI text
         fullContent: extractedText, 
         tags: finalTags,
         metadata: {
@@ -123,6 +111,22 @@ class _UploadScreenState extends State<UploadScreen>{
 
       // Save to Firestore Database
       await DatabaseService().createNode(newNode);
+
+      final nodeId = await DatabaseService().createNode(newNode);
+
+      final docRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('nodes')
+          .doc(nodeId);
+
+      // 🔥 Now wait for backend to generate summary
+      setState(() => _statusMessage = "AI is generating a smart summary...");
+
+      await docRef.snapshots().asyncMap((snapshot) {
+        final data = snapshot.data();
+        return data;
+      }).firstWhere((data) => data != null && (data['summary'] ?? '').toString().trim().isNotEmpty);
 
       if(mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Upload & AI Summary Complete!")));
