@@ -4,16 +4,9 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cognistore/database_service.dart';
 import 'package:cognistore/models/memory_node.dart';
 import 'package:firebase_auth/firebase_auth.dart';  
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:dotted_border/dotted_border.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
-Future<String> getAISummary(String extractedText) async {
-  final callable = FirebaseFunctions.instanceFor(region: 'us-central1').httpsCallable('generateSummary');
-  final result = await callable.call(extractedText);
-  return result.data;
-}
 
 class UploadScreen extends StatefulWidget{
   const UploadScreen({super.key});
@@ -110,7 +103,6 @@ class _UploadScreenState extends State<UploadScreen>{
       );
 
       // Save to Firestore Database
-      await DatabaseService().createNode(newNode);
 
       final nodeId = await DatabaseService().createNode(newNode);
 

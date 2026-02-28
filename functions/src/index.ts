@@ -1,9 +1,8 @@
 import * as admin from "firebase-admin";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
-import { onCallGenkit } from "firebase-functions/https";
 import { defineSecret } from "firebase-functions/params";
-import { genkit, z } from "genkit";
+import { genkit } from "genkit";
 import { googleAI } from "@genkit-ai/google-genai";
 
 const apiKey = defineSecret("GOOGLE_GENAI_API_KEY");
@@ -22,30 +21,6 @@ setGlobalOptions({
     memory: "1GiB",
     timeoutSeconds: 120
 });
-
-export const aiSummaryFlow = ai.defineFlow({
-    name: "aiSummaryFlow",
-    inputSchema: z.string().describe("Full extracted PDF text").default("nothing"),
-    outputSchema: z.string(),
-}, async (extractedText) => {
-    const prompt = `
-      You are a highly intelligent corporate assistant. Please read the following document text and provide a concise, 2-sentence summary of the main decisions, trade-offs, or insights.
-        
-      Document Text:
-      ${extractedText}
-    `;
-    const response = await ai.generate({
-        // FIX 1: Upgraded to the active 2.5 model
-        model: googleAI.model("gemini-2.5-flash"), 
-        prompt: prompt,
-    });
-    return response.text;
-});
-
-export const generateSummary = onCallGenkit({
-    authPolicy: (auth) => !!auth?.uid,
-    secrets: [apiKey],
-}, aiSummaryFlow);
 
 function chunkTextSafe(full: string, maxLen: number, overlap: number): string[] {
     const out: string[] = [];
