@@ -958,13 +958,28 @@ class _MyHomePageState extends State<MyHomePage> {
       decoration: BoxDecoration(color: Theme.of(context).cardColor, borderRadius: BorderRadius.circular(12), border: Border.all(color: isDark ? Colors.grey.shade800 : Colors.grey.shade200)),
       child: Shimmer.fromColors(
         baseColor: isDark ? Colors.grey.shade800 : Colors.grey.shade200, highlightColor: isDark ? Colors.grey.shade700 : Colors.grey.shade50,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(flex: 3, child: Container(color: Theme.of(context).cardColor, margin: const EdgeInsets.all(16))),
-            const Divider(height: 1, thickness: 1),
-            Expanded(flex: 1, child: Container(color: Theme.of(context).cardColor, margin: const EdgeInsets.all(16))),
-          ],
+        child: SizedBox(
+          height: 200, // choose a height that fits your design
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                flex: 3,
+                child: Container(
+                  color: Theme.of(context).cardColor,
+                  margin: const EdgeInsets.all(16),
+                ),
+              ),
+              const Divider(height: 1, thickness: 1),
+              Expanded(
+                flex: 1,
+                child: Container(
+                  color: Theme.of(context).cardColor,
+                  margin: const EdgeInsets.all(16),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
